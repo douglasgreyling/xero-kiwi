@@ -1,0 +1,67 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/Prepayments
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '15473'
+      Xero-Correlation-Id:
+      - 7245dc0b-e218-4a28-8656-1c1e7d95d6f4
+      X-Appminlimit-Remaining:
+      - '9999'
+      X-Minlimit-Remaining:
+      - '59'
+      X-Daylimit-Remaining:
+      - '4924'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 14:01:09 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 14:01:09 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"7245dc0b-e218-4a28-8656-1c1e7d95d6f4","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775829669034)/","Prepayments":[{"PrepaymentID":"c405b342-88cc-4c2c-95cb-d106c874e527","InvoiceNumber":"INV-0008","ID":"c405b342-88cc-4c2c-95cb-d106c874e527","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0008","RemainingCredit":262.0,"Allocations":[{"AllocationID":"11fac119-eabc-4ec4-9e49-94e0ceee8a22","Amount":57.0,"Date":"/Date(1574208000000+0000)/","Invoice":{"InvoiceID":"253498ce-f836-44ad-9c0a-13b331ed0969","InvoiceNumber":"INV-0001","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}},{"AllocationID":"05ce10bf-2cf3-42f1-bc3b-f882d0045413","Amount":34.0,"Date":"/Date(1574208000000+0000)/","Invoice":{"InvoiceID":"3820ec6a-91bc-4630-8906-a7ea380fee4d","InvoiceNumber":"INV-0007","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"850803eb-b231-42a8-a916-e4a39d7cd2c3","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-01-01T00:00:00","Date":"/Date(1546300800000+0000)/","Status":"AUTHORISED","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":306.96,"TotalTax":46.04,"Total":353.0,"UpdatedDateUTC":"/Date(1574279997543+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"b8d0ffb1-aa4b-45f2-b309-aa24a3e1785b","InvoiceNumber":"INV-0023","ID":"b8d0ffb1-aa4b-45f2-b309-aa24a3e1785b","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0023","RemainingCredit":0.0,"Allocations":[{"AllocationID":"7242af68-4ce7-4387-80f5-40ea359a35ab","Amount":73.0,"Date":"/Date(1556582400000+0000)/","Invoice":{"InvoiceID":"abad7c2f-56b5-4f92-9b4c-0ba290bb137a","InvoiceNumber":"INV-0024","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-04-01T00:00:00","Date":"/Date(1554076800000+0000)/","Status":"PAID","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":63.48,"TotalTax":9.52,"Total":73.0,"UpdatedDateUTC":"/Date(1574696912033+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"4a27d582-2edf-4b01-9ecd-2fb9093b75d3","InvoiceNumber":"INV-0021","ID":"4a27d582-2edf-4b01-9ecd-2fb9093b75d3","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0021","RemainingCredit":784.88,"Allocations":[{"AllocationID":"4c533287-85c4-4fc5-b13f-c0634cd5ff79","Amount":999.99,"Date":"/Date(1574640000000+0000)/","Invoice":{"InvoiceID":"3901ef65-8b40-4fd0-93eb-4de36fdbf672","InvoiceNumber":"INV-0025","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-05-03T00:00:00","Date":"/Date(1556841600000+0000)/","Status":"AUTHORISED","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":1552.06,"TotalTax":232.81,"Total":1784.87,"UpdatedDateUTC":"/Date(1574698089213+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"8a3b3bc9-2816-4e57-b5c7-79315ba387f0","InvoiceNumber":"INV-0035","ID":"8a3b3bc9-2816-4e57-b5c7-79315ba387f0","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0035","RemainingCredit":0.0,"Allocations":[],"Payments":[{"PaymentID":"032f7eef-dc43-4214-aa87-027f6094f94f","Date":"/Date(1624838400000+0000)/","Amount":15143.45,"CurrencyRate":1.0,"HasAccount":false,"HasValidationErrors":false}],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-08T00:00:00","Date":"/Date(1573171200000+0000)/","Status":"PAID","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":15143.45,"TotalTax":0.0,"Total":15143.45,"UpdatedDateUTC":"/Date(1624891915830+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"4f524167-efd5-4908-9630-a5e34c5c1d78","InvoiceNumber":"INV-0022","ID":"4f524167-efd5-4908-9630-a5e34c5c1d78","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0022","RemainingCredit":0.0,"Allocations":[{"AllocationID":"e74a7f4c-51f9-43b4-8730-a1e9f6ea76e7","Amount":3079.0,"Date":"/Date(1624838400000+0000)/","Invoice":{"InvoiceID":"9e764037-4773-47f0-834d-f4506cde7bbf","InvoiceNumber":"INV-0036","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-05-01T00:00:00","Date":"/Date(1556668800000+0000)/","Status":"PAID","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":2677.39,"TotalTax":401.61,"Total":3079.0,"UpdatedDateUTC":"/Date(1624892392297+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"b24a5aaa-8244-4b6e-8544-bd10805bd0b9","InvoiceNumber":"INV-0038","ID":"b24a5aaa-8244-4b6e-8544-bd10805bd0b9","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0038","RemainingCredit":881.0,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-10-01T00:00:00","Date":"/Date(1569888000000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":881.0,"TotalTax":0.0,"Total":881.0,"UpdatedDateUTC":"/Date(1627406290597+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"35138d3d-b52b-43e9-94c6-b384b2ac7f66","InvoiceNumber":"INV-0072","ID":"35138d3d-b52b-43e9-94c6-b384b2ac7f66","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0072","RemainingCredit":94.89,"Allocations":[{"AllocationID":"3d04420a-ddc7-4fbd-b548-9b8f23a3ae21","Amount":84.0,"Date":"/Date(1691193600000+0000)/","Invoice":{"InvoiceID":"8b4e79dc-b551-40b5-b155-11b5c1bd3c2b","InvoiceNumber":"INV-0069","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}},{"AllocationID":"1075a420-f0d0-4ffc-9bdd-111799f9bb02","Amount":50.0,"Date":"/Date(1691193600000+0000)/","Invoice":{"InvoiceID":"7f689424-7f72-4f7c-af31-ff6a8ff99de8","InvoiceNumber":"INV-0070","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[{"PaymentID":"d0573d97-e40a-4577-a4ce-61cffa474796","Date":"/Date(1690848000000+0000)/","Amount":123.0,"Reference":"INV-0072","CurrencyRate":1.0,"HasAccount":false,"HasValidationErrors":false}],"HasAttachments":false,"Contact":{"ContactID":"00a96cf1-ab5d-4fb6-87bc-5765e708575d","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-05T00:00:00","Date":"/Date(1572912000000+0000)/","Status":"AUTHORISED","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":305.99,"TotalTax":45.9,"Total":351.89,"UpdatedDateUTC":"/Date(1692114888247+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"d32eb568-a844-41d4-b1a7-b2a19f3c70ea","InvoiceNumber":"INV-0071","ID":"d32eb568-a844-41d4-b1a7-b2a19f3c70ea","Type":"RECEIVE-PREPAYMENT","Reference":"INV-0071","RemainingCredit":169.25,"Allocations":[{"AllocationID":"460c93e1-90a9-4665-960d-ae530c56e318","Amount":50.0,"Date":"/Date(1691193600000+0000)/","Invoice":{"InvoiceID":"8b4e79dc-b551-40b5-b155-11b5c1bd3c2b","InvoiceNumber":"INV-0069","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}},{"AllocationID":"320c534a-9bf3-4c03-b17b-3f17898a981b","Amount":55.0,"Date":"/Date(1691193600000+0000)/","Invoice":{"InvoiceID":"7f689424-7f72-4f7c-af31-ff6a8ff99de8","InvoiceNumber":"INV-0070","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[{"PaymentID":"83938f30-72fd-4e99-b9dc-fdad16c4ae1b","Date":"/Date(1691452800000+0000)/","Amount":111.0,"Reference":"INV-0071","CurrencyRate":1.0,"HasAccount":false,"HasValidationErrors":false}],"HasAttachments":false,"Contact":{"ContactID":"2c867883-e680-4b91-84ec-e26b49b6fbbb","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2023-08-05T00:00:00","Date":"/Date(1691193600000+0000)/","Status":"AUTHORISED","LineAmountTypes":"Exclusive","LineItems":[],"SubTotal":335.0,"TotalTax":50.25,"Total":385.25,"UpdatedDateUTC":"/Date(1692114926417+0000)/","CurrencyCode":"ZAR"},{"PrepaymentID":"94463b30-c16a-459b-911a-1b7e0e326fba","ID":"94463b30-c16a-459b-911a-1b7e0e326fba","Type":"SPEND-PREPAYMENT","Reference":"","RemainingCredit":10843.77,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"f431c672-b453-4488-b63e-95270a27e1f6","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-11T00:00:00","Date":"/Date(1573430400000+0000)/","Status":"AUTHORISED","LineAmountTypes":"Inclusive","LineItems":[],"SubTotal":9429.37,"TotalTax":1414.4,"Total":10843.77,"UpdatedDateUTC":"/Date(1716835857357+0000)/","CurrencyCode":"ZAR"}]}'
+  recorded_at: Fri, 10 Apr 2026 14:01:09 GMT
+recorded_with: VCR 6.4.0

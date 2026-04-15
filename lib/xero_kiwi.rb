@@ -1,0 +1,33 @@
+# frozen_string_literal: true
+
+require_relative "xero_kiwi/version"
+require_relative "xero_kiwi/errors"
+require_relative "xero_kiwi/token"
+require_relative "xero_kiwi/connection"
+require_relative "xero_kiwi/accounting/address"
+require_relative "xero_kiwi/accounting/phone"
+require_relative "xero_kiwi/accounting/external_link"
+require_relative "xero_kiwi/accounting/payment_terms"
+require_relative "xero_kiwi/accounting/contact_person"
+require_relative "xero_kiwi/accounting/organisation"
+require_relative "xero_kiwi/accounting/contact"
+require_relative "xero_kiwi/accounting/contact_group"
+require_relative "xero_kiwi/accounting/tracking_category"
+require_relative "xero_kiwi/accounting/line_item"
+require_relative "xero_kiwi/accounting/prepayment"
+require_relative "xero_kiwi/accounting/credit_note"
+require_relative "xero_kiwi/accounting/overpayment"
+require_relative "xero_kiwi/accounting/payment"
+require_relative "xero_kiwi/accounting/invoice"
+require_relative "xero_kiwi/accounting/allocation"
+require_relative "xero_kiwi/accounting/user"
+require_relative "xero_kiwi/accounting/branding_theme"
+require_relative "xero_kiwi/client"
+require_relative "xero_kiwi/identity"
+require_relative "xero_kiwi/token_refresher"
+require_relative "xero_kiwi/oauth"
+require_relative "xero_kiwi/oauth/pkce"
+require_relative "xero_kiwi/oauth/id_token"
+
+module XeroKiwi
+end

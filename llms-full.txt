@@ -1,0 +1,3351 @@
+# XeroKiwi — full documentation
+
+This file is the complete documentation for the XeroKiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.
+
+For the curated index version, see llms.txt in the same directory.
+
+Source: https://github.com/douglasgreyling/xero-kiwi
+
+
+================================================================================
+FILE: README.md
+================================================================================
+
+# Xero Kiwi
+
+A Ruby wrapper for the [Xero](https://www.xero.com) Accounting API. XeroKiwi handles
+the unglamorous parts of integrating with Xero — OAuth2, token refresh, rate
+limiting, retries — so the rest of your code can focus on the actual business
+problem.
+
+## What's in the box
+
+- **Full OAuth2 authorization-code flow** with PKCE support, CSRF state helpers,
+  and OIDC ID token verification against Xero's JWKS.
+- **Automatic token refresh** with proactive (before expiry) and reactive
+  (on-401) handling, a callback hook for persisting rotated tokens, and a
+  mutex to dedupe concurrent refreshes from multiple threads.
+- **Rate-limit-aware retries** that honour Xero's `Retry-After` header on 429s
+  and back off on transient 5xxs, built on `faraday-retry`.
+- **A discoverable client surface** with explicit error classes for every
+  failure mode (authentication, rate limit, code exchange, ID token verification,
+  CSRF mismatch).
+- **Connection management**: list and disconnect tenants, with token revocation
+  for "disconnect Xero from my app" flows.
+- **Accounting resources**: fetch contacts, organisations, users, branding
+  themes, and nested objects like addresses, phones, external links, and payment
+  terms — all wrapped in proper value objects.
+
+## Installation
+
+Add this line to your application's Gemfile:
+
+```ruby
+gem "xero-kiwi"
+```
+
+Then run `bundle install`.
+
+XeroKiwi requires Ruby 3.4.1 or newer.
+
+## Quick start
+
+```ruby
+require "xero_kiwi"
+
+# Once you've completed the OAuth flow and have an access token:
+client = XeroKiwi::Client.new(access_token: "ya29...")
+client.connections.each do |connection|
+  puts "#{connection.tenant_name} (#{connection.tenant_type})"
+end
+```
+
+For the full OAuth flow, refresh handling, and everything else, see the docs
+below.
+
+## Documentation
+
+| Doc | What it covers |
+|-----|----------------|
+| [Getting started](docs/getting-started.md) | Installation, the mental model, your first end-to-end request |
+| [Client](docs/client.md) | `XeroKiwi::Client` — every constructor option, request lifecycle, configuration |
+| [Connections](docs/connections.md) | Listing tenants, the `XeroKiwi::Connection` resource, disconnecting tenants |
+| [Contacts](docs/accounting/contact.md) | Listing and fetching contacts, the `XeroKiwi::Accounting::Contact` resource, nested ContactPerson |
+| [Contact Groups](docs/accounting/contact-group.md) | Listing and fetching contact groups, the `XeroKiwi::Accounting::ContactGroup` resource |
+| [Organisation](docs/accounting/organisation.md) | Fetching an organisation, the `XeroKiwi::Accounting::Organisation` resource, nested objects |
+| [Users](docs/accounting/user.md) | Listing and fetching users, the `XeroKiwi::Accounting::User` resource, organisation roles |
+| [Credit Notes](docs/accounting/credit-note.md) | Listing and fetching credit notes, the `XeroKiwi::Accounting::CreditNote` resource |
+| [Invoices](docs/accounting/invoice.md) | Listing and fetching invoices/bills, the `XeroKiwi::Accounting::Invoice` resource |
+| [Payments](docs/accounting/payment.md) | Listing and fetching payments, the `XeroKiwi::Accounting::Payment` resource |
+| [Overpayments](docs/accounting/overpayment.md) | Listing and fetching overpayments, the `XeroKiwi::Accounting::Overpayment` resource |
+| [Prepayments](docs/accounting/prepayment.md) | Listing and fetching prepayments, the `XeroKiwi::Accounting::Prepayment` resource, LineItem |
+| [Branding Themes](docs/accounting/branding-theme.md) | Listing and fetching branding themes, the `XeroKiwi::Accounting::BrandingTheme` resource |
+| [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
+| [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
+| [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
+| [Retries and rate limits](docs/retries-and-rate-limits.md) | How XeroKiwi handles 429s and transient failures, customising the retry policy |
+
+## Status
+
+XeroKiwi is in early development. The API surface for the features documented above
+is stable, but expect new resource methods to be added over time. Breaking
+changes will be called out in the [changelog](CHANGELOG.md).
+
+## Contributing
+
+Bug reports and pull requests are welcome on GitHub at
+https://github.com/douglasgreyling/xero-kiwi.
+
+## License
+
+The gem is available as open source under the terms of the
+[MIT License](https://opensource.org/licenses/MIT).
+
+
+================================================================================
+FILE: docs/getting-started.md
+================================================================================
+
+# Getting started
+
+This guide walks you from a fresh checkout to your first successful Xero API
+call. If you already know what OAuth2 is and just want the API reference, jump
+straight to [Client](client.md) or [OAuth](oauth.md).
+
+## Prerequisites
+
+Before you can talk to Xero from Ruby, you need:
+
+1. **A Xero developer account.** Sign up at
+   <https://developer.xero.com>.
+2. **A Xero app**, registered in the developer portal. The app gives you a
+   `client_id` and `client_secret` and lets you configure a redirect URL.
+3. **Ruby 3.4.1 or newer.**
+
+## Installing the gem
+
+Add XeroKiwi to your `Gemfile`:
+
+```ruby
+gem "xero-kiwi"
+```
+
+Then:
+
+```sh
+bundle install
+```
+
+## The mental model
+
+XeroKiwi is built around a small set of objects, each with one job:
+
+| Object | What it does |
+|--------|--------------|
+| [`XeroKiwi::OAuth`](oauth.md) | Drives the OAuth2 authorization-code flow. Builds authorise URLs, exchanges codes for tokens, verifies ID tokens, revokes tokens. |
+| [`XeroKiwi::Token`](tokens.md) | An immutable value object holding an access/refresh pair plus expiry metadata. Knows when it's expired or expiring. |
+| [`XeroKiwi::Client`](client.md) | The API gateway. You give it a token (or full credentials) and call methods like `client.connections`. Handles retries, refresh, error mapping. |
+| [`XeroKiwi::Connection`](connections.md) | A Xero "connection" — one tenant (organisation or practice) that an access token is authorised against. |
+| [`XeroKiwi::Accounting::Organisation`](accounting/organisation.md) | A Xero organisation — the accounting entity (company, trust, etc.) behind a tenant. |
+
+The flow is always: **OAuth → Token → Client → resources.** OAuth gets you a
+Token; you hand the Token to a Client; the Client lets you call resource
+methods.
+
+## Your first request — the short version
+
+If you already have an access token (e.g. from a previous OAuth dance, or from
+the Xero developer portal's "Try it" tooling), making a request is one line:
+
+```ruby
+require "xero_kiwi"
+
+client = XeroKiwi::Client.new(access_token: "ya29...")
+client.connections # => [#<XeroKiwi::Connection ...>, ...]
+```
+
+This is enough to get started, but the access token will expire after 30
+minutes and you have no way to refresh it. For anything beyond a quick script,
+read on.
+
+## Your first request — the full version
+
+A production-grade integration looks more like this:
+
+```ruby
+require "xero_kiwi"
+
+# 1. Set up the OAuth helper. You only need redirect_uri for the auth-code
+#    flow itself; for refresh-only / revoke-only callers it's optional.
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  redirect_uri:  "https://app.example.com/xero/callback"
+)
+
+# 2. Send the user to Xero. Stash the state + PKCE verifier in your session
+#    so you can verify them when the user comes back.
+state = XeroKiwi::OAuth.generate_state
+pkce  = XeroKiwi::OAuth.generate_pkce
+session[:xero_state]    = state
+session[:xero_verifier] = pkce.verifier
+
+redirect_to oauth.authorization_url(
+  scopes: %w[openid profile email accounting.transactions offline_access],
+  state:  state,
+  pkce:   pkce
+)
+
+# 3. In your callback handler, verify state, exchange the code, persist the
+#    tokens, and you're ready to call the API.
+XeroKiwi::OAuth.verify_state!(
+  received: params[:state],
+  expected: session.delete(:xero_state)
+)
+
+token = oauth.exchange_code(
+  code:          params[:code],
+  code_verifier: session.delete(:xero_verifier)
+)
+
+XeroCredential.create!(
+  access_token:  token.access_token,
+  refresh_token: token.refresh_token,
+  expires_at:    token.expires_at
+)
+
+# 4. Now build a refresh-capable client and use it. The client will refresh
+#    automatically when the token expires; the on_token_refresh callback
+#    persists the rotated token back to your storage.
+credential = XeroCredential.last
+
+client = XeroKiwi::Client.new(
+  access_token:     credential.access_token,
+  refresh_token:    credential.refresh_token,
+  expires_at:       credential.expires_at,
+  client_id:        ENV.fetch("XERO_CLIENT_ID"),
+  client_secret:    ENV.fetch("XERO_CLIENT_SECRET"),
+  on_token_refresh: ->(token) { credential.update!(token.to_h) }
+)
+
+client.connections.each do |connection|
+  puts "#{connection.tenant_name} (#{connection.tenant_id})"
+end
+```
+
+That's the whole loop: authorise, exchange, persist, call the API.
+
+## Where to go next
+
+- [OAuth](oauth.md) — the full reference for the auth-code flow, PKCE, ID token
+  verification, and revocation.
+- [Client](client.md) — every constructor option for `XeroKiwi::Client`, the request
+  lifecycle, custom adapters and retry policy.
+- [Tokens](tokens.md) — how refresh works, the persistence callback, manual vs
+  automatic refresh, multi-process gotchas.
+- [Errors](errors.md) — the full error hierarchy and what to rescue when.
+
+
+================================================================================
+FILE: docs/client.md
+================================================================================
+
+# XeroKiwi::Client
+
+`XeroKiwi::Client` is the entry point for talking to Xero's accounting API. You
+construct one with credentials and call resource methods on it. The client
+holds the OAuth token state, knows how to refresh it, and translates HTTP
+errors into XeroKiwi exceptions.
+
+## Constructing a client
+
+Two common shapes:
+
+```ruby
+# Simple — access token only, no refresh capability.
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Full — refresh-capable, with persistence callback.
+client = XeroKiwi::Client.new(
+  access_token:     credential.access_token,
+  refresh_token:    credential.refresh_token,
+  expires_at:       credential.expires_at,
+  client_id:        ENV.fetch("XERO_CLIENT_ID"),
+  client_secret:    ENV.fetch("XERO_CLIENT_SECRET"),
+  on_token_refresh: ->(token) { credential.update!(token.to_h) }
+)
+```
+
+The simple form is fine for one-off scripts and quick experiments. For
+anything long-running, use the full form so the client can refresh tokens for
+you. See [Tokens](tokens.md) for the full refresh story.
+
+## Constructor options
+
+| Option | Type | Required | Default | Purpose |
+|--------|------|----------|---------|---------|
+| `access_token:` | `String` | Yes | — | The OAuth2 bearer token used on every API call. |
+| `refresh_token:` | `String` | No | `nil` | The refresh token. Required if you want the client to refresh expired access tokens. |
+| `expires_at:` | `Time` | No | `nil` | When the access token expires. Used by the proactive refresh check. If `nil`, the client falls back to reactive refresh on 401. |
+| `client_id:` | `String` | No | `nil` | Your Xero app's client ID. Required for refresh. |
+| `client_secret:` | `String` | No | `nil` | Your Xero app's client secret. Required for refresh. |
+| `on_token_refresh:` | `Proc` / lambda | No | `nil` | Called with the new `XeroKiwi::Token` whenever a refresh happens. Use this to persist the rotated token back to storage. |
+| `adapter:` | `Symbol` / Faraday adapter | No | `Faraday.default_adapter` | The Faraday adapter to use. Override to swap in `:net_http_persistent`, `:typhoeus`, or a test adapter. |
+| `user_agent:` | `String` | No | `"XeroKiwi/<version>"` | Sent as the `User-Agent` header on every request. |
+| `retry_options:` | `Hash` | No | See [retries and rate limits](retries-and-rate-limits.md) | Overrides for the `faraday-retry` configuration. Merged into the defaults. |
+
+## What the client gives you
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `client.connections` | `Array<XeroKiwi::Connection>` | Fetch the tenants this token is authorised against. See [Connections](connections.md). |
+| `client.contacts(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Contact>` | Fetch the contacts for a tenant. See [Contacts](accounting/contact.md). |
+| `client.contact(tenant_id_or_connection, contact_id)` | `XeroKiwi::Accounting::Contact` | Fetch a single contact by ID. See [Contacts](accounting/contact.md). |
+| `client.contact_groups(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::ContactGroup>` | Fetch the contact groups for a tenant. See [Contact Groups](accounting/contact-group.md). |
+| `client.contact_group(tenant_id_or_connection, contact_group_id)` | `XeroKiwi::Accounting::ContactGroup` | Fetch a single contact group by ID. See [Contact Groups](accounting/contact-group.md). |
+| `client.organisation(tenant_id_or_connection)` | `XeroKiwi::Accounting::Organisation` | Fetch the organisation for a tenant. See [Organisation](accounting/organisation.md). |
+| `client.users(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::User>` | Fetch the users for a tenant. See [Users](accounting/user.md). |
+| `client.user(tenant_id_or_connection, user_id)` | `XeroKiwi::Accounting::User` | Fetch a single user by ID. See [Users](accounting/user.md). |
+| `client.credit_notes(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::CreditNote>` | Fetch the credit notes for a tenant. See [Credit Notes](accounting/credit-note.md). |
+| `client.credit_note(tenant_id_or_connection, credit_note_id)` | `XeroKiwi::Accounting::CreditNote` | Fetch a single credit note by ID. See [Credit Notes](accounting/credit-note.md). |
+| `client.invoices(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Invoice>` | Fetch the invoices for a tenant. See [Invoices](accounting/invoice.md). |
+| `client.invoice(tenant_id_or_connection, invoice_id)` | `XeroKiwi::Accounting::Invoice` | Fetch a single invoice by ID. See [Invoices](accounting/invoice.md). |
+| `client.online_invoice_url(tenant_id_or_connection, invoice_id)` | `String` | Fetch the online invoice URL for a sales invoice. See [Invoices](accounting/invoice.md). |
+| `client.payments(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Payment>` | Fetch the payments for a tenant. See [Payments](accounting/payment.md). |
+| `client.payment(tenant_id_or_connection, payment_id)` | `XeroKiwi::Accounting::Payment` | Fetch a single payment by ID. See [Payments](accounting/payment.md). |
+| `client.overpayments(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Overpayment>` | Fetch the overpayments for a tenant. See [Overpayments](accounting/overpayment.md). |
+| `client.overpayment(tenant_id_or_connection, overpayment_id)` | `XeroKiwi::Accounting::Overpayment` | Fetch a single overpayment by ID. See [Overpayments](accounting/overpayment.md). |
+| `client.prepayments(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Prepayment>` | Fetch the prepayments for a tenant. See [Prepayments](accounting/prepayment.md). |
+| `client.prepayment(tenant_id_or_connection, prepayment_id)` | `XeroKiwi::Accounting::Prepayment` | Fetch a single prepayment by ID. See [Prepayments](accounting/prepayment.md). |
+| `client.branding_themes(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::BrandingTheme>` | Fetch the branding themes for a tenant. See [Branding Themes](accounting/branding-theme.md). |
+| `client.branding_theme(tenant_id_or_connection, branding_theme_id)` | `XeroKiwi::Accounting::BrandingTheme` | Fetch a single branding theme by ID. See [Branding Themes](accounting/branding-theme.md). |
+| `client.delete_connection(id_or_connection)` | `true` | Disconnect a tenant. See [Connections](connections.md). |
+| `client.token` | `XeroKiwi::Token` | The current in-memory token. Inspect expiry, refreshability, etc. |
+| `client.token.expired?` | `Boolean` | True if `expires_at` is in the past. |
+| `client.token.expiring_soon?(within: 60)` | `Boolean` | True if `expires_at` falls inside the window. |
+| `client.token.refreshable?` | `Boolean` | True if the token has a refresh token attached. |
+| `client.can_refresh?` | `Boolean` | True if the client was constructed with both refresh credentials AND the current token has a `refresh_token`. |
+| `client.refresh_token!` | `XeroKiwi::Token` | Force a refresh now. Returns the new token. Raises `XeroKiwi::TokenRefreshError` if there's no refresh capability. |
+| `client.revoke_token!` | `true` | Revoke the current refresh token at Xero. Use for logout / "disconnect Xero" flows. See [Tokens](tokens.md). |
+
+## The request lifecycle
+
+Every API call goes through `with_authenticated_request`, which wraps the
+actual HTTP call with two layers of token-freshness handling:
+
+1. **Proactive refresh.** Before the request fires, if the token is expiring
+   within the default window (60 seconds) AND the client has refresh
+   capability, the client refreshes the token first. This covers the common
+   case of "the token I loaded from the database is about to expire."
+2. **The actual HTTP call** — including all the retry behaviour described
+   in [retries and rate limits](retries-and-rate-limits.md).
+3. **Reactive refresh on 401.** If the request returns a 401 anyway (token
+   was revoked early, our clock is wrong, etc.), the client refreshes once
+   and retries the request. A `retried` flag prevents an infinite loop —
+   the second 401 raises `XeroKiwi::AuthenticationError`.
+
+If you constructed the client without refresh credentials, both layers are
+skipped: a 401 raises immediately and you handle it in your own code.
+
+## Custom adapters
+
+XeroKiwi uses Faraday under the hood, so you can swap the HTTP adapter for
+testing or for connection pooling:
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  adapter:      :net_http_persistent
+)
+```
+
+For tests:
+
+```ruby
+require "faraday"
+
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  adapter:      [:test, Faraday::Adapter::Test::Stubs.new] # or use webmock
+)
+```
+
+The adapter is also passed through to the internal `TokenRefresher`, so a
+test adapter swallows refresh requests too.
+
+## Customising the retry policy
+
+`retry_options:` is merged into XeroKiwi's defaults, so you only need to specify
+overrides:
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  retry_options: {
+    max:      8,        # try up to 8 retries (default: 4)
+    interval: 1.0       # initial wait of 1 second (default: 0.5)
+  }
+)
+```
+
+See [retries and rate limits](retries-and-rate-limits.md) for the full
+configuration reference and which keys you can override.
+
+## Thread safety
+
+A single client can safely be shared across threads. The internals are
+thread-safe in two specific ways:
+
+- **Token refresh** is protected by a `Mutex` with a double-check pattern. If
+  two threads both notice the token is expiring at the same time, only one
+  will actually call Xero's refresh endpoint; the other waits, then sees the
+  fresh token and proceeds.
+- **Faraday connections** are reused across threads (Faraday's adapters are
+  designed for this).
+
+There's one caveat: **manual `refresh_token!` calls don't double-check.** If
+you call `client.refresh_token!` from two threads simultaneously, both will
+hit Xero, and the second will fail because the refresh token rotated. The
+automatic path (`ensure_fresh_token!` inside `with_authenticated_request`)
+deduplicates correctly.
+
+If you're sharing a client across multiple processes (e.g. a Sidekiq pool
+spread across machines), the in-process mutex doesn't help you. See
+[Tokens](tokens.md#multi-process-refresh) for the multi-process gotcha and
+how to handle it.
+
+## What the client deliberately does NOT do
+
+- **Persist anything.** The client never writes to your database, session,
+  or filesystem. The `on_token_refresh` callback is your hook for that.
+- **Manage OAuth state.** The client doesn't know about CSRF state or PKCE
+  verifiers. Use [`XeroKiwi::OAuth`](oauth.md) for the auth-code flow.
+- **Validate scopes.** If your token doesn't have the right scope for an
+  endpoint, you'll get a 403 from Xero. The client surfaces it as a
+  `XeroKiwi::ClientError`; it's the caller's job to know what scopes they
+  asked for.
+
+
+================================================================================
+FILE: docs/oauth.md
+================================================================================
+
+# OAuth
+
+`XeroKiwi::OAuth` implements the Xero OAuth2 authorization-code flow. It's
+**stateless** — every method is a pure function over its arguments — so the
+same `OAuth` instance can serve both halves of the redirect (authorise →
+callback) even when those halves run in different processes.
+
+This doc walks through the full flow, the helper methods, PKCE, ID token
+verification, and token revocation. For the long-term token lifecycle
+(refresh, expiry, persistence callbacks), see [Tokens](tokens.md).
+
+## The flow at a glance
+
+1. **Build an authorise URL** with `oauth.authorization_url(...)` and
+   redirect the user there.
+2. The user signs in to Xero, picks tenants, grants permissions, and Xero
+   redirects them to your `redirect_uri` with `?code=...&state=...`.
+3. **Verify the `state`** with `XeroKiwi::OAuth.verify_state!` to defeat CSRF.
+4. **Exchange the code** for a token with `oauth.exchange_code(...)`.
+5. **(Optional) Verify the ID token** with `oauth.verify_id_token(...)` if
+   you need to know who the user is.
+6. **Use the access token** to call `client.connections` and the rest of
+   the API.
+
+## Constructing an OAuth instance
+
+```ruby
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  redirect_uri:  "https://app.example.com/xero/callback"
+)
+```
+
+### Constructor options
+
+| Option | Type | Required | Default | Purpose |
+|--------|------|----------|---------|---------|
+| `client_id:` | `String` | Yes | — | Your Xero app's client ID |
+| `client_secret:` | `String` | Yes | — | Your Xero app's client secret |
+| `redirect_uri:` | `String` | Conditional | `nil` | Required for `authorization_url` and `exchange_code`. **Optional** if you only use this instance for `revoke_token` or `verify_id_token`. |
+| `adapter:` | Faraday adapter | No | `Faraday.default_adapter` | The HTTP adapter for token-endpoint and JWKS calls |
+
+### Why `redirect_uri:` is optional
+
+The OAuth instance is reused for several different operations. Some need
+`redirect_uri`, some don't:
+
+- **`authorization_url`**: Yes, always.
+- **`exchange_code`**: Yes (Xero requires it in the form body for the exchange).
+- **`revoke_token`**: No.
+- **`verify_id_token`**: No.
+
+If you're building a "revoke-only" instance for a logout flow, or a
+"verify-only" instance for an external ID token, you don't need to invent a
+fake redirect URL. Pass `redirect_uri: nil` (or just omit it). If you then
+*do* call `authorization_url` or `exchange_code`, you'll get a clear
+`ArgumentError` at call time rather than a confusing 400 from Xero.
+
+## Step 1: building the authorisation URL
+
+```ruby
+state = XeroKiwi::OAuth.generate_state
+pkce  = XeroKiwi::OAuth.generate_pkce
+
+session[:xero_state]    = state
+session[:xero_verifier] = pkce.verifier
+
+redirect_to oauth.authorization_url(
+  scopes: %w[openid profile email accounting.transactions offline_access],
+  state:  state,
+  pkce:   pkce
+)
+```
+
+### `authorization_url` options
+
+| Option | Type | Required | Purpose |
+|--------|------|----------|---------|
+| `scopes:` | `Array<String>` or `String` | Yes | The Xero scopes to request. Passed in space-separated to Xero. |
+| `state:` | `String` | Yes | A random per-request value used for CSRF protection. Generate with `XeroKiwi::OAuth.generate_state` and stash in your session. |
+| `pkce:` | `XeroKiwi::OAuth::PKCE` | No | A PKCE pair to bind the auth code to this request. See below. |
+| `nonce:` | `String` | No | An optional OIDC nonce to embed in the ID token. Useful if you'll verify it on the callback. |
+
+The returned URL is opaque — your job is just to redirect to it. Don't
+parse it, don't reformat it.
+
+### Common scope strings
+
+Xero scopes are documented in their [scopes reference](https://developer.xero.com/documentation/guides/oauth2/scopes/).
+Some commonly useful ones:
+
+| Scope | What it grants |
+|-------|----------------|
+| `openid` | Required for OIDC (gets you an `id_token`) |
+| `profile` | The user's display name |
+| `email` | The user's email address |
+| `offline_access` | **Required if you want a refresh token.** Without this, you only get an access token that dies in 30 minutes. |
+| `accounting.transactions` | Read/write invoices, bills, payments, etc. |
+| `accounting.contacts` | Read/write contacts |
+| `accounting.settings` | Read accounting settings |
+
+If you forget `offline_access`, you'll get a token but no `refresh_token`,
+and `client.can_refresh?` will be false forever.
+
+## State (CSRF protection)
+
+The `state` parameter is the OAuth2 standard for defeating cross-site
+request forgery. Without it, an attacker could trick a logged-in user into
+linking their own Xero account to the attacker's app account.
+
+### Generating and verifying
+
+```ruby
+# Before the redirect:
+state = XeroKiwi::OAuth.generate_state
+session[:xero_state] = state
+
+# In your callback:
+XeroKiwi::OAuth.verify_state!(
+  received: params[:state],
+  expected: session.delete(:xero_state)
+)
+# Raises XeroKiwi::OAuth::StateMismatchError on any mismatch.
+```
+
+### How the verification works
+
+`verify_state!` does **constant-time** comparison via
+`OpenSSL.fixed_length_secure_compare`, with a length check up front (the
+OpenSSL function raises on unequal lengths, and the length itself isn't
+secret).
+
+It raises `XeroKiwi::OAuth::StateMismatchError` if:
+
+- Either value is `nil`.
+- The values have different byte lengths.
+- The values have the same length but different content.
+
+The error message is deliberately generic ("OAuth state parameter
+mismatch") — don't reveal *what* the values were in user-facing output.
+
+### State storage tips
+
+- **Use the session** in a typical web app. Sessions are server-side or
+  signed, so a user can't tamper with the stashed state.
+- **Use `session.delete(...)`** in the callback to remove the stashed value
+  in one go, preventing replay attacks where the same callback URL is hit
+  twice.
+- **Don't store state in a cookie** unless that cookie is signed. Otherwise
+  the user can rewrite it.
+
+## PKCE (Proof Key for Code Exchange)
+
+PKCE binds the auth code to the original authorisation request: the client
+generates a random verifier, sends a hash of it on the authorise call, then
+proves possession of the original verifier when exchanging the code. An
+attacker who intercepts the auth code can't redeem it without the verifier.
+
+It's **required** for public clients (mobile apps, SPAs, anything where the
+client secret isn't actually secret). For server-side confidential clients
+it's **recommended** as defence in depth — there's no real downside.
+
+### Generating a PKCE pair
+
+```ruby
+pkce = XeroKiwi::OAuth.generate_pkce
+# or:
+pkce = XeroKiwi::OAuth::PKCE.generate
+```
+
+A `XeroKiwi::OAuth::PKCE` exposes:
+
+| Attribute | What it is |
+|-----------|------------|
+| `pkce.verifier` | A 43-character URL-safe random string. **Stash this in your session** — you'll need it on the callback. |
+| `pkce.challenge` | The base64url-encoded SHA256 of the verifier (with no padding). This is what gets sent to Xero on the authorise call. |
+| `pkce.to_h` | The form params Xero expects: `{ code_verifier:, code_challenge:, code_challenge_method: "S256" }`. Useful for testing or for building requests by hand. |
+
+### Using PKCE in the flow
+
+```ruby
+# Authorise:
+pkce = XeroKiwi::OAuth.generate_pkce
+session[:xero_verifier] = pkce.verifier
+redirect_to oauth.authorization_url(
+  scopes: %w[...],
+  state:  state,
+  pkce:   pkce # passes code_challenge + code_challenge_method to Xero
+)
+
+# Callback:
+token = oauth.exchange_code(
+  code:          params[:code],
+  code_verifier: session.delete(:xero_verifier) # prove we're the same client
+)
+```
+
+If you pass a `pkce:` to `authorization_url` but **forget** the
+`code_verifier:` on `exchange_code`, Xero will reject the exchange with
+`invalid_grant` and XeroKiwi will raise `XeroKiwi::OAuth::CodeExchangeError`.
+
+## Step 2: handling the callback
+
+Xero redirects the user to your `redirect_uri` with one of two query string
+shapes:
+
+**On success:**
+```
+https://app.example.com/xero/callback?code=ABC123&state=stashed_state
+```
+
+**On failure** (user denied, scope rejected, etc):
+```
+https://app.example.com/xero/callback?error=access_denied&error_description=...
+```
+
+Always check for `error=` first:
+
+```ruby
+def callback
+  if params[:error]
+    redirect_to root_path, alert: params[:error_description]
+    return
+  end
+
+  XeroKiwi::OAuth.verify_state!(
+    received: params[:state],
+    expected: session.delete(:xero_state)
+  )
+
+  # ... exchange the code
+end
+```
+
+## Step 3: exchanging the code
+
+```ruby
+token = oauth.exchange_code(
+  code:          params[:code],
+  code_verifier: session.delete(:xero_verifier) # only if you used PKCE
+)
+```
+
+### `exchange_code` options
+
+| Option | Type | Required | Purpose |
+|--------|------|----------|---------|
+| `code:` | `String` | Yes | The auth code from the callback query string |
+| `code_verifier:` | `String` | Conditional | Required if you sent a PKCE challenge in the authorise step |
+
+### Return value
+
+A `XeroKiwi::Token` containing the access token, refresh token, expires_at,
+id_token, and scope. See [Tokens](tokens.md) for the full reference.
+
+### Error behaviour
+
+| Cause | Exception |
+|-------|-----------|
+| Code already used / expired (Xero codes are short-lived) | `XeroKiwi::OAuth::CodeExchangeError` |
+| Wrong `redirect_uri` (must match the one used at authorise time) | `XeroKiwi::OAuth::CodeExchangeError` |
+| PKCE verifier mismatch | `XeroKiwi::OAuth::CodeExchangeError` |
+| Wrong client credentials | `XeroKiwi::OAuth::CodeExchangeError` |
+| Network error | bubbles up as a `Faraday::ConnectionFailed` |
+
+`XeroKiwi::OAuth::CodeExchangeError` inherits from `XeroKiwi::AuthenticationError`,
+so you can catch the broader class if you don't care about the distinction.
+
+## ID token verification
+
+If you requested the `openid` scope, Xero returns an `id_token` (a JWT) in
+the token response. The ID token contains claims about who the user is —
+their `sub`, `email`, `given_name`, etc. **You should verify it before
+trusting any of those claims**, otherwise an attacker who steals an access
+token could feed you a forged ID token to impersonate someone.
+
+### Verifying via the OAuth instance (recommended)
+
+```ruby
+verified = oauth.verify_id_token(token.id_token)
+
+verified.subject     # the OIDC `sub` — Xero's user identifier
+verified.email       # if `email` scope was granted
+verified.given_name  # if `profile` scope was granted
+verified.family_name
+verified.expires_at  # Time
+verified.issued_at   # Time
+verified.claims      # full claims hash
+```
+
+This route uses the OAuth instance's **JWKS cache**: the first verification
+fetches Xero's signing keys from
+`https://identity.xero.com/.well-known/openid-configuration/jwks` and the
+result is cached in memory for an hour. Subsequent verifications on the
+same instance reuse the cached keys, so verifying 100 tokens in a session
+costs you exactly one HTTPS round-trip.
+
+### Verifying standalone
+
+If you don't have an `OAuth` instance handy:
+
+```ruby
+verified = XeroKiwi::OAuth::IDToken.verify(
+  id_token,
+  client_id: "your_client_id"
+)
+```
+
+The standalone class method **fetches JWKS fresh on every call** via
+`Net::HTTP`. Fine for one-off use, wasteful in a hot loop. If you find
+yourself calling it repeatedly, switch to the OAuth instance method.
+
+You can also inject your own JWKS provider:
+
+```ruby
+XeroKiwi::OAuth::IDToken.verify(
+  id_token,
+  client_id: "...",
+  jwks: -> { my_cached_jwks_hash }
+)
+```
+
+The `jwks:` proc must return an array of JWK hashes (the contents of the
+`"keys"` array in a standard JWKS document).
+
+### What gets verified
+
+| Check | How |
+|-------|-----|
+| Signature | RS256, against the public key whose `kid` matches the JWT header. Other algorithms are rejected. |
+| Issuer (`iss`) | Must equal `https://identity.xero.com`. |
+| Audience (`aud`) | Must equal the `client_id` you passed in. |
+| Expiry (`exp`) | Must be in the future (with no clock skew tolerance). |
+| Nonce (`nonce`) | Only if you pass `nonce:` to `verify`. Constant-time compare. |
+
+Anything that fails raises `XeroKiwi::OAuth::IDTokenError` with a descriptive
+message ("ID token verification failed: ...").
+
+### Nonce verification
+
+If you sent a nonce in the authorise call, you should verify it on the way
+back:
+
+```ruby
+# Authorise:
+nonce = SecureRandom.urlsafe_base64(16)
+session[:xero_nonce] = nonce
+redirect_to oauth.authorization_url(scopes: ..., state: ..., nonce: nonce)
+
+# Callback:
+verified = oauth.verify_id_token(
+  token.id_token,
+  nonce: session.delete(:xero_nonce)
+)
+```
+
+The nonce check fails if the token doesn't contain a `nonce` claim, if the
+claim doesn't match what you sent, or if the comparison would have raised.
+
+## Token revocation
+
+Use this for "disconnect Xero from my app" / logout flows.
+
+### Via the Client (most common)
+
+```ruby
+client.revoke_token!
+credential.destroy!
+```
+
+See [Tokens — revoking tokens](tokens.md#revoking-tokens) for the full
+story.
+
+### Via OAuth directly
+
+If you have a refresh token in hand:
+
+```ruby
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET")
+  # no redirect_uri needed
+)
+
+oauth.revoke_token(refresh_token: "1//...")
+```
+
+Returns `true` on success, raises `XeroKiwi::AuthenticationError`/`XeroKiwi::ClientError`
+on failure.
+
+### Why we always revoke the refresh token
+
+Per RFC 7009 you can pass either an access token or a refresh token to the
+revoke endpoint. **But** revoking the access token only kills that one
+access token — the refresh token is still alive and can mint a new one
+immediately. Revoking the refresh token invalidates the entire chain.
+
+`XeroKiwi::OAuth#revoke_token` only accepts a refresh token (the keyword arg
+is `refresh_token:`) precisely to prevent the foot-gun of "I called revoke
+but the user is still logged in."
+
+## Full Rails-style example
+
+```ruby
+class XeroOAuthController < ApplicationController
+  def authorize
+    state = XeroKiwi::OAuth.generate_state
+    pkce  = XeroKiwi::OAuth.generate_pkce
+
+    session[:xero_state]    = state
+    session[:xero_verifier] = pkce.verifier
+
+    redirect_to oauth.authorization_url(
+      scopes: %w[openid profile email accounting.transactions offline_access],
+      state:  state,
+      pkce:   pkce
+    )
+  end
+
+  def callback
+    if params[:error]
+      redirect_to root_path, alert: params[:error_description]
+      return
+    end
+
+    XeroKiwi::OAuth.verify_state!(
+      received: params[:state],
+      expected: session.delete(:xero_state)
+    )
+
+    token = oauth.exchange_code(
+      code:          params[:code],
+      code_verifier: session.delete(:xero_verifier)
+    )
+
+    # Confirm who the user is before storing anything
+    identity = oauth.verify_id_token(token.id_token)
+
+    # Discover tenants
+    api_client = XeroKiwi::Client.new(access_token: token.access_token)
+    tenants = api_client.connections
+
+    # Persist the credential
+    XeroCredential.create!(
+      user_email:    identity.email,
+      access_token:  token.access_token,
+      refresh_token: token.refresh_token,
+      expires_at:    token.expires_at,
+      tenants:       tenants.map { |t| { id: t.tenant_id, name: t.tenant_name } }
+    )
+
+    redirect_to dashboard_path
+  rescue XeroKiwi::OAuth::StateMismatchError
+    redirect_to root_path, alert: "Authentication failed (CSRF check)"
+  rescue XeroKiwi::OAuth::CodeExchangeError
+    redirect_to root_path, alert: "Could not complete Xero authorisation"
+  rescue XeroKiwi::OAuth::IDTokenError
+    redirect_to root_path, alert: "Could not verify Xero identity token"
+  end
+
+  def disconnect
+    credential = current_user.xero_credential
+
+    client = XeroKiwi::Client.new(
+      access_token:  credential.access_token,
+      refresh_token: credential.refresh_token,
+      expires_at:    credential.expires_at,
+      client_id:     ENV.fetch("XERO_CLIENT_ID"),
+      client_secret: ENV.fetch("XERO_CLIENT_SECRET")
+    )
+
+    client.revoke_token!
+    credential.destroy!
+    redirect_to root_path, notice: "Disconnected from Xero"
+  end
+
+  private
+
+  def oauth
+    @oauth ||= XeroKiwi::OAuth.new(
+      client_id:     Rails.application.credentials.xero[:client_id],
+      client_secret: Rails.application.credentials.xero[:client_secret],
+      redirect_uri:  xero_oauth_callback_url
+    )
+  end
+end
+```
+
+## Things OAuth deliberately does NOT do
+
+- **No session storage.** XeroKiwi gives you `generate_state` and
+  `generate_pkce` as helpers but never touches your session/cookies/Redis.
+  Where you stash the values is your problem — and that's a feature,
+  because every framework is different.
+- **No automatic state tracking on the OAuth instance.** Some gems offer a
+  stateful "session" object that holds the state and verifier in memory
+  between authorise and callback. That only works if both halves of the
+  flow run in the same process, which isn't true for any web app where the
+  redirect lands on a different request. Stateless functions compose
+  better.
+- **No `at_hash` verification on ID tokens.** OIDC defines an optional
+  `at_hash` claim that lets you verify the access token hasn't been
+  tampered with in transit. It's rarely used and adds complexity. Skip
+  until requested.
+- **No nonce generation helper.** `SecureRandom.urlsafe_base64(16)` at
+  the call site is already simple — could add `OAuth.generate_nonce` for
+  symmetry with `generate_state`, but it'd be one line of code.
+
+
+================================================================================
+FILE: docs/tokens.md
+================================================================================
+
+# Tokens
+
+This doc covers everything about token *state* in XeroKiwi: the `XeroKiwi::Token`
+value object, how the client refreshes tokens automatically, the persistence
+callback, manual refresh, revocation, and the gotchas around token rotation.
+
+For the OAuth *protocol* (building authorise URLs, exchanging codes), see
+[OAuth](oauth.md).
+
+## The `XeroKiwi::Token` value object
+
+A `XeroKiwi::Token` is an immutable bundle of OAuth state — the access/refresh
+pair plus all the metadata Xero returns at refresh time:
+
+```ruby
+token = XeroKiwi::Token.new(
+  access_token:  "ya29...",
+  refresh_token: "1//...",
+  expires_at:    Time.now + 1800,
+  token_type:    "Bearer",
+  id_token:      "eyJhbG...",
+  scope:         "openid offline_access accounting.transactions"
+)
+```
+
+You usually don't construct one by hand — it's what `OAuth#exchange_code` and
+`OAuth#refresh_token` (via `TokenRefresher`) return, and what
+`XeroKiwi::Client#token` exposes.
+
+### Constructor options
+
+| Option | Type | Default | Required |
+|--------|------|---------|----------|
+| `access_token:` | `String` | — | Yes |
+| `refresh_token:` | `String` | `nil` | No |
+| `expires_at:` | `Time` | `nil` | No |
+| `token_type:` | `String` | `"Bearer"` | No |
+| `id_token:` | `String` | `nil` | No |
+| `scope:` | `String` | `nil` | No |
+
+### Building from a Xero OAuth response
+
+`Token.from_oauth_response` converts a Xero token-endpoint payload (which
+returns `expires_in` as seconds-from-now) into a Token with an absolute
+`expires_at`:
+
+```ruby
+payload = {
+  "access_token"  => "...",
+  "refresh_token" => "...",
+  "expires_in"    => 1800,
+  "token_type"    => "Bearer",
+  "scope"         => "openid offline_access ...",
+  "id_token"      => "..."
+}
+
+token = XeroKiwi::Token.from_oauth_response(payload)
+# expires_at is computed as Time.now + 1800
+
+# You can also pin the anchor time, which is useful for tests:
+token = XeroKiwi::Token.from_oauth_response(payload, requested_at: some_time)
+```
+
+This method accepts both string-keyed and symbol-keyed payloads.
+
+## Expiry helpers
+
+| Method | What it returns |
+|--------|-----------------|
+| `token.expired?(now: Time.now)` | `true` if `expires_at` is in the past. **Returns `false` when `expires_at` is nil** — without an expiry we have no signal to act on. |
+| `token.expiring_soon?(within: 60, now: Time.now)` | `true` if `expires_at` falls within `within` seconds of `now`. The default 60s window is what `XeroKiwi::Client` uses for its proactive refresh. |
+| `token.valid?(now: Time.now)` | `true` if the access token is non-empty AND not expired. |
+| `token.refreshable?` | `true` if a non-empty refresh token is present. |
+
+The `now:` keyword arg lets you inject a fixed time for testing.
+
+### Why `expired?` returns false on nil `expires_at`
+
+If you don't know when the token expires (e.g. you loaded a credential from
+storage that was created before you tracked expiry), XeroKiwi treats it as
+"unknown" and assumes valid. The fallback is reactive — your first 401 will
+trigger a refresh.
+
+Set `expires_at:` whenever you can; it's strictly better than relying on
+reactive refresh, which costs you a wasted API call before the refresh fires.
+
+## Refreshing the token
+
+There are two ways the client refreshes tokens for you:
+
+### Automatic (preferred)
+
+If you constructed the client with refresh credentials, every API call goes
+through these checks:
+
+1. **Proactive** — before the request fires, if `token.expiring_soon?`
+   returns true, the client refreshes first.
+2. **Reactive** — if the request returns 401 anyway, the client refreshes
+   and retries the request once.
+
+You don't have to do anything to opt in — it's the default behaviour. Just
+make sure to provide all the refresh ingredients at construction time:
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token:     credential.access_token,
+  refresh_token:    credential.refresh_token,
+  expires_at:       credential.expires_at,
+  client_id:        ENV.fetch("XERO_CLIENT_ID"),
+  client_secret:    ENV.fetch("XERO_CLIENT_SECRET"),
+  on_token_refresh: ->(token) { credential.update!(token.to_h) }
+)
+```
+
+### Manual
+
+If you need to force a refresh outside of an API call:
+
+```ruby
+new_token = client.refresh_token!
+# or just:
+client.refresh_token!
+client.token # the new token
+```
+
+`refresh_token!` raises `XeroKiwi::TokenRefreshError` if:
+
+- The client has no refresh credentials (`client_id`/`client_secret` missing).
+- The current token has no `refresh_token`.
+- Xero rejects the refresh (e.g. `invalid_grant` because the refresh token
+  was already rotated by another process — see
+  [the rotation gotcha](#refresh-token-rotation) below).
+
+### `client.can_refresh?`
+
+True if and only if all the ingredients are in place: client credentials *and*
+a non-empty refresh token. Use this to check before calling `refresh_token!`
+explicitly:
+
+```ruby
+if client.can_refresh?
+  client.refresh_token!
+else
+  # surface a "needs re-auth" state
+end
+```
+
+## The `on_token_refresh` callback
+
+This is the most important integration point in the gem. Every time the
+client refreshes the token — proactively, reactively, or via a manual
+`refresh_token!` — it calls your callback with the new `XeroKiwi::Token`:
+
+```ruby
+on_token_refresh: ->(token) { credential.update!(token.to_h) }
+```
+
+The callback fires from inside the refresh mutex, so by the time it runs,
+the new token is the canonical in-memory state. If you don't persist it,
+the next process to load the credential will use the now-invalid old refresh
+token and fail.
+
+### Persistence patterns
+
+Different applications store credentials differently. The callback works the
+same in all of them — XeroKiwi just hands you the new token and trusts you to
+put it somewhere:
+
+```ruby
+# Rails / ActiveRecord
+on_token_refresh: ->(token) { credential.update!(access_token: token.access_token, refresh_token: token.refresh_token, expires_at: token.expires_at) }
+
+# Sequel
+on_token_refresh: ->(token) { DB[:credentials].where(id: id).update(token.to_h) }
+
+# Local CLI tool with a JSON file
+on_token_refresh: ->(token) { File.write("~/.xero", JSON.dump(token.to_h)) }
+
+# Background sync architecture: write through a queue so persistence
+# happens in a single-writer worker (avoids the rotation race below)
+on_token_refresh: ->(token) { TokenWriter.enqueue(tenant_id, token.to_h) }
+```
+
+The callback receives a `XeroKiwi::Token`, so you can call `.to_h` to get a
+plain hash, or pick fields off it directly.
+
+## Refresh token rotation
+
+**Xero rotates refresh tokens on every use.** When you successfully refresh,
+Xero returns a *new* refresh token alongside the new access token, and the
+old refresh token is immediately invalidated. There is no way to recover it.
+
+This is the source of the most common production bug with OAuth-based
+integrations:
+
+> **Two workers race.** Worker A and Worker B both load the same credential
+> row from the database, both notice the token is expiring, and both try to
+> refresh. Worker A wins, gets a new refresh token, persists it. Worker B
+> tries to use the old refresh token (which it loaded before A persisted)
+> and gets `invalid_grant`. From Worker B's perspective, the credential
+> looks dead — but it's not, A just rotated it.
+
+XeroKiwi mitigates this in two ways:
+
+1. **Single-process safety.** A `Mutex` around refresh, with a double-check
+   inside, prevents multiple threads in the *same process* from racing.
+2. **Single-process safety only.** The mutex doesn't help across processes.
+
+### Multi-process refresh
+
+If you have multiple processes sharing one credential (e.g. Sidekiq workers,
+multiple Rails servers behind a load balancer), the in-process mutex doesn't
+protect you. Options:
+
+#### Option A — Single-writer architecture
+
+Funnel all refreshes through one process. When a worker notices a token is
+expiring, it enqueues a "please refresh this credential" job to a single
+worker that handles refresh exclusively. The worker that requested the
+refresh waits for the result (or just retries with the freshly-loaded
+credential).
+
+This is the cleanest approach but requires architecture work.
+
+#### Option B — Catch the race and reload
+
+When `XeroKiwi::TokenRefreshError` fires, the most common cause is "another
+process already refreshed." Reload the credential from the database — if
+the refresh token has changed, use the new one and retry. If it's the
+same, the credential is genuinely dead and you need to re-authorise.
+
+```ruby
+def with_xero_client
+  credential = XeroCredential.find(id)
+  client = build_client(credential)
+
+  yield client
+
+rescue XeroKiwi::TokenRefreshError
+  credential.reload
+  if credential.refresh_token != client.token.refresh_token
+    retry # another process refreshed; pick up their new token
+  else
+    credential.update!(needs_reauth: true)
+    raise
+  end
+end
+```
+
+#### Option C — Distributed lock
+
+Use Redis (or Postgres advisory locks, etc.) to take a distributed lock
+keyed by credential ID before refreshing. Slower but more robust than
+Option B.
+
+XeroKiwi doesn't ship any of these — they're application-level decisions that
+depend on your infrastructure. But the existence of `client.token.refreshable?`
+and the explicit `XeroKiwi::TokenRefreshError` give you the building blocks.
+
+## Revoking tokens
+
+Revocation tells Xero "please invalidate this token." Use it for "disconnect
+Xero from my app" / logout flows.
+
+### Via `XeroKiwi::Client`
+
+```ruby
+client.revoke_token!
+credential.destroy! # caller's job
+```
+
+This:
+
+1. POSTs to `https://identity.xero.com/connect/revocation` with the client's
+   current refresh token.
+2. Returns `true` on success.
+3. Raises `XeroKiwi::TokenRefreshError` if the client has no refresh capability,
+   or `XeroKiwi::AuthenticationError` if Xero rejects the revoke.
+
+After revocation, **treat the client as dead.** Subsequent API calls will
+401, and reactive refresh will fail because the refresh token is gone too.
+XeroKiwi doesn't set an internal flag on the client — there's no
+`client.revoked?` predicate — because the right thing for a caller to do
+post-revocation is throw the client away, not keep using it.
+
+### Via `XeroKiwi::OAuth` directly
+
+If you have a refresh token in hand and don't want to construct a Client:
+
+```ruby
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET")
+  # no redirect_uri needed for revoke-only
+)
+
+oauth.revoke_token(refresh_token: stored_refresh_token)
+```
+
+`OAuth#revoke_token` is the protocol-level method; `Client#revoke_token!`
+is a thin convenience over it.
+
+### Why we always pass the refresh token, not the access token
+
+Per RFC 7009 you can revoke either the access token or the refresh token.
+Xero accepts both. **But** revoking the access token only kills that one
+access token — the refresh token stays alive and can mint a new one
+immediately. Revoking the refresh token invalidates the entire chain.
+
+XeroKiwi enforces the refresh-token path: `Client#revoke_token!` raises if you
+don't have a refresh token, rather than silently revoking the access token
+(which would do almost nothing useful). This avoids a foot-gun where users
+think they've logged out but the token is still happily working.
+
+## Inspecting tokens
+
+`XeroKiwi::Token#inspect` redacts the access token so it doesn't accidentally
+end up in logs:
+
+```ruby
+token.inspect
+# => "#<XeroKiwi::Token access_token=[FILTERED] refreshable=true expires_at=2026-04-09 14:30:00 UTC>"
+```
+
+`token.to_h` does NOT redact — it returns the full hash for storage. Don't
+log the full hash.
+
+## Things tokens deliberately do NOT do
+
+- **No automatic expiry from `Time.now`.** Tokens are immutable; their
+  expiry is fixed at construction. The "expiring" predicates are
+  computations against a `now:` parameter, not stateful checks.
+- **No comparison of access token bytes.** `XeroKiwi::Token#==` compares the
+  full hash, which works for "is this the same token?" but isn't a security
+  check. Don't use it for authentication.
+- **No JWT decoding of the access token.** Xero's access tokens are JWTs,
+  but XeroKiwi doesn't peek at their contents. The `id_token` is the OIDC
+  identity assertion you should care about; see [OAuth](oauth.md#id-token-verification)
+  for verifying it.
+
+
+================================================================================
+FILE: docs/connections.md
+================================================================================
+
+# Connections
+
+In Xero's terminology, a **connection** is one tenant (organisation or
+practice) that an access token has been authorised against. A single user can
+authorise your app against multiple tenants in one OAuth flow, and each one
+becomes a separate connection.
+
+This is the first thing you'll typically call after exchanging an OAuth code
+for tokens — you need the `tenant_id` from a connection before you can hit
+any of the actual accounting endpoints.
+
+> See: [Xero docs — managing connections](https://developer.xero.com/documentation/best-practices/managing-connections/connections)
+
+## Listing connections
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+client.connections.each do |connection|
+  puts "#{connection.tenant_name} — #{connection.tenant_id}"
+end
+```
+
+`client.connections` returns an `Array<XeroKiwi::Connection>`. The array is empty
+if the user authorised your app but didn't pick any tenants (rare, but
+possible). The endpoint doesn't take any filtering parameters — Xero returns
+everything the token has access to.
+
+## The Connection object
+
+Each `XeroKiwi::Connection` is an immutable value object exposing the fields Xero
+returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `id` | `String` | The **connection** UUID. This is what you pass to `delete_connection` to disconnect. |
+| `tenant_id` | `String` | The **tenant** UUID. This is what you put in the `Xero-Tenant-Id` header on every accounting API call. |
+| `tenant_type` | `String` | Either `"ORGANISATION"` or `"PRACTICE"`. |
+| `tenant_name` | `String` | The display name (e.g. "Maple Florists Ltd"). |
+| `auth_event_id` | `String` | The OAuth event UUID. Useful for correlating with Xero's audit logs. |
+| `created_date_utc` | `Time` | When the connection was first established, parsed as UTC. |
+| `updated_date_utc` | `Time` | When the connection was last updated, parsed as UTC. |
+
+### `id` vs `tenant_id` — important
+
+These are **different UUIDs**. Get them mixed up and your API calls will
+mysteriously 401.
+
+- `connection.id` is the unique identifier of the *connection record itself*,
+  used for deletion.
+- `connection.tenant_id` is the unique identifier of the *tenant* (the Xero
+  organisation), used in the `Xero-Tenant-Id` header on every accounting
+  request.
+
+## Predicates
+
+```ruby
+connection.organisation? # tenant_type == "ORGANISATION"
+connection.practice?     # tenant_type == "PRACTICE"
+```
+
+## Equality and hashing
+
+Two connections are `==` if they have the same `id`, even if other attributes
+differ. This is convenient for set operations:
+
+```ruby
+old_connections - new_connections # diff by id
+```
+
+`#hash` is consistent with `==`, so connections work as hash keys.
+
+## Date parsing
+
+Xero serialises dates in C# DateTime format and frequently omits the timezone
+marker on values that are documented as UTC (e.g. `"2019-07-09T23:40:30.1833130"`).
+XeroKiwi force-appends a `Z` before parsing so you always get a UTC `Time` back —
+without this, `Time.parse` would silently fall back to local time and you'd
+get the wrong instant.
+
+If you want the raw string Xero sent, the connection's `to_h` only exposes
+the parsed `Time` objects. Reach into the response yourself if you need the
+original strings.
+
+## Disconnecting a tenant
+
+```ruby
+# By id
+client.delete_connection("e1eede29-f875-4a5d-8470-17f6a29a88b1")
+
+# Or by passing the Connection object — its `id` is used
+connection = client.connections.first
+client.delete_connection(connection)
+```
+
+`delete_connection` returns `true` on success and raises on failure. Both
+forms hit `DELETE /connections/:id`.
+
+After a successful delete:
+
+- The named tenant is detached from the access token.
+- **Other tenants** authorised by the same token are *not* affected — only
+  this one connection is gone.
+- Calls that include the deleted `tenant_id` in their `Xero-Tenant-Id` header
+  will start failing with 401.
+
+### Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 204 No Content | (none — returns `true`) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have permission to disconnect this tenant |
+| 404 | `XeroKiwi::ClientError` | The connection ID doesn't exist (or was already deleted) |
+
+A 404 is usually idempotent-friendly — if you're trying to make sure a tenant
+is disconnected, catching `XeroKiwi::ClientError` and ignoring 404s is reasonable:
+
+```ruby
+begin
+  client.delete_connection(id)
+rescue XeroKiwi::ClientError => e
+  raise unless e.status == 404
+end
+```
+
+## Common patterns
+
+### Find a tenant by name
+
+```ruby
+target = client.connections.find { |c| c.tenant_name == "Maple Florists Ltd" }
+target&.tenant_id # use this in subsequent API calls
+```
+
+### Disconnect everything
+
+For "remove Xero from my app" flows where the user wants a full disconnect,
+combine deletion with token revocation:
+
+```ruby
+client.connections.each { |c| client.delete_connection(c) }
+client.revoke_token!
+credential.destroy!
+```
+
+The order matters — once you `revoke_token!`, the access token is dead and
+subsequent `delete_connection` calls will 401. So delete first, then revoke.
+
+(In practice you can skip the per-connection deletes entirely if you're going
+to revoke the token anyway — revoking the refresh token invalidates the
+access token, which detaches all connections at once. The per-connection
+delete is for when you want to disconnect *some* tenants and keep others.)
+
+### Iterating without holding the array
+
+Connections are usually a small list (1-10 entries) so loading them all is
+cheap. But if you only need one:
+
+```ruby
+client.connections.lazy.find { |c| c.tenant_id == target_tenant_id }
+```
+
+The lazy enumerator doesn't help here — `client.connections` already does
+the full HTTP fetch — but it's idiomatic and avoids materialising more than
+you need into local variables.
+
+
+================================================================================
+FILE: docs/accounting/contact.md
+================================================================================
+
+# Contacts
+
+A Xero **contact** is a person or organisation you do business with — customers,
+suppliers, or both. Contacts carry addresses, phone numbers, payment terms, and
+metadata like tax type defaults. You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch contacts.
+
+> See: [Xero docs — Contacts](https://developer.xero.com/documentation/api/accounting/contacts)
+
+## Listing contacts
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+contacts = client.contacts("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+contacts = client.contacts(connection)
+```
+
+`client.contacts` hits `GET /api.xro/2.0/Contacts` with the `Xero-Tenant-Id`
+header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::Contact>`.
+
+## Fetching a single contact
+
+```ruby
+contact = client.contact(tenant_id, "bd2270c3-8706-4c11-9cfb-000b551c3f51")
+contact.name  # => "ABC Limited"
+```
+
+`client.contact` hits `GET /api.xro/2.0/Contacts/{ContactID}` and returns a
+single `XeroKiwi::Accounting::Contact`, or `nil` if the response is empty.
+
+Fetching a single contact returns additional fields that are not included in the
+list response (e.g. `contact_persons`, `payment_terms`, `website`).
+
+## The Contact object
+
+Each `XeroKiwi::Accounting::Contact` is an immutable value object. The fields below
+are always returned on list and single-contact responses:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `contact_id` | `String` | The unique Xero identifier for the contact. |
+| `contact_number` | `String` | External system identifier (read-only in Xero UI). |
+| `account_number` | `String` | A user-defined account number. |
+| `contact_status` | `String` | `"ACTIVE"` or `"ARCHIVED"`. |
+| `name` | `String` | Full name of the contact or organisation. |
+| `first_name` | `String` | First name of the contact person. |
+| `last_name` | `String` | Last name of the contact person. |
+| `email_address` | `String` | Email address of the contact person. |
+| `bank_account_details` | `String` | Bank account number. |
+| `company_number` | `String` | Company registration number (max 50 chars). |
+| `tax_number` | `String` | ABN / GST / VAT / Tax ID Number. |
+| `tax_number_type` | `String` | Regional type of tax number (e.g. `"ABN"`). |
+| `accounts_receivable_tax_type` | `String` | Default AR invoice tax type. |
+| `accounts_payable_tax_type` | `String` | Default AP invoice tax type. |
+| `addresses` | `Array<XeroKiwi::Accounting::Address>` | The contact's addresses. See [Address](address.md). |
+| `phones` | `Array<XeroKiwi::Accounting::Phone>` | The contact's phone numbers. See [Phone](phone.md). |
+| `is_supplier` | `Boolean` | Whether the contact has any AP invoices. |
+| `is_customer` | `Boolean` | Whether the contact has any AR invoices. |
+| `default_currency` | `String` | Default currency code (e.g. `"NZD"`). |
+| `updated_date_utc` | `Time` | When the contact was last modified, parsed as UTC. |
+
+### Additional fields (single contact / paginated responses only)
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `contact_persons` | `Array<XeroKiwi::Accounting::ContactPerson>` | Up to 5 contact people. See [ContactPerson](#the-contactperson-object). |
+| `xero_network_key` | `String` | Xero network key for the contact. |
+| `merged_to_contact_id` | `String` | ID of the destination contact if merged. |
+| `sales_default_account_code` | `String` | Default sales account code. |
+| `purchases_default_account_code` | `String` | Default purchases account code. |
+| `sales_tracking_categories` | `Array<Hash>` | Default sales tracking categories (raw). |
+| `purchases_tracking_categories` | `Array<Hash>` | Default purchases tracking categories (raw). |
+| `sales_default_line_amount_type` | `String` | `"INCLUSIVE"`, `"EXCLUSIVE"`, or `"NONE"`. |
+| `purchases_default_line_amount_type` | `String` | `"INCLUSIVE"`, `"EXCLUSIVE"`, or `"NONE"`. |
+| `tracking_category_name` | `String` | Tracking category name. |
+| `tracking_option_name` | `String` | Tracking option name. |
+| `payment_terms` | `XeroKiwi::Accounting::PaymentTerms` | Default payment terms. See [PaymentTerms](payment-terms.md). |
+| `contact_groups` | `Array<Hash>` | Contact groups the contact belongs to (raw). |
+| `website` | `String` | Website URL. |
+| `branding_theme` | `Hash` | Default branding theme (raw). |
+| `batch_payments` | `Hash` | Batch payment details (raw). |
+| `discount` | `Float` | Default discount rate. |
+| `balances` | `Hash` | Outstanding and overdue AR/AP balances (raw). |
+| `has_attachments` | `Boolean` | Whether the contact has attachments. |
+
+## The ContactPerson object
+
+Each `XeroKiwi::Accounting::ContactPerson` is an immutable value object:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `first_name` | `String` | First name. |
+| `last_name` | `String` | Last name. |
+| `email_address` | `String` | Email address. |
+| `include_in_emails` | `Boolean` | Whether to include on invoice emails. |
+
+With a predicate: `contact_person.include_in_emails?`
+
+## Predicates
+
+```ruby
+contact.reference?  # true if this is a lightweight reference from another resource
+contact.supplier?   # is_supplier == true
+contact.customer?   # is_customer == true
+contact.active?     # contact_status == "ACTIVE"
+contact.archived?   # contact_status == "ARCHIVED"
+```
+
+### Contact references
+
+When a contact appears nested inside another resource (e.g. an Invoice, Prepayment,
+or CreditNote), it is wrapped as a `XeroKiwi::Accounting::Contact` with `reference?`
+returning `true`. Reference contacts typically carry only a subset of fields (like
+`contact_id` and `name`) — other fields will be `nil`.
+
+```ruby
+invoice = client.invoice(tenant_id, invoice_id)
+invoice.contact.name          # => "City Agency"
+invoice.contact.reference?    # => true
+
+# Fetch the full contact if you need all fields:
+full_contact = client.contact(tenant_id, invoice.contact.contact_id)
+full_contact.reference?       # => false
+full_contact.email_address    # => "a.dutchess@abclimited.com"
+```
+
+## Equality and hashing
+
+Two contacts are `==` if they share the same `contact_id`. `#hash` is consistent
+with `==`, so contacts work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns contacts) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The contact ID doesn't exist in this organisation |
+
+## Common patterns
+
+### Listing all customers
+
+```ruby
+contacts = client.contacts(tenant_id)
+customers = contacts.select(&:customer?)
+customers.each { |c| puts "#{c.name} (#{c.default_currency})" }
+```
+
+### Fetching a contact with full details
+
+```ruby
+# The list response omits some fields. Fetch individually for full details.
+contact = client.contact(tenant_id, "bd2270c3-8706-4c11-9cfb-000b551c3f51")
+puts contact.website
+contact.contact_persons.each do |person|
+  puts "  #{person.first_name} #{person.last_name} — #{person.email_address}"
+end
+```
+
+
+================================================================================
+FILE: docs/accounting/contact-group.md
+================================================================================
+
+# Contact Groups
+
+A Xero **contact group** is a named collection of contacts — useful for
+organising customers or suppliers into categories like "VIP Customers" or
+"Preferred Suppliers". You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch contact groups.
+
+> See: [Xero docs — Contact Groups](https://developer.xero.com/documentation/api/accounting/contactgroups)
+
+## Listing contact groups
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+groups = client.contact_groups("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+groups = client.contact_groups(connection)
+```
+
+`client.contact_groups` hits `GET /api.xro/2.0/ContactGroups` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::ContactGroup>`. Only groups with status `ACTIVE` are
+returned by Xero.
+
+## Fetching a single contact group
+
+```ruby
+group = client.contact_group(tenant_id, "97bbd0e6-ab4d-4117-9304-d90dd4779199")
+group.name      # => "VIP Customers"
+group.contacts  # => [{"ContactID" => "...", "Name" => "Boom FM"}, ...]
+```
+
+`client.contact_group` hits `GET /api.xro/2.0/ContactGroups/{ContactGroupID}`
+and returns a single `XeroKiwi::Accounting::ContactGroup`, or `nil` if the
+response is empty.
+
+The single-group response includes a `contacts` array with the `ContactID` and
+`Name` of each contact in the group. The list response does not include this.
+
+## The ContactGroup object
+
+Each `XeroKiwi::Accounting::ContactGroup` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `contact_group_id` | `String` | The unique Xero identifier for the group. |
+| `name` | `String` | The display name (e.g. "VIP Customers"). |
+| `status` | `String` | `"ACTIVE"` (only active groups are returned by Xero). |
+| `contacts` | `Array<XeroKiwi::Accounting::Contact>` | The contacts in the group (references — each has `reference?` returning `true`). Only present when fetching a single group. See [Contacts](contact.md). |
+
+## Predicates
+
+```ruby
+group.active?  # status == "ACTIVE"
+```
+
+## Equality and hashing
+
+Two contact groups are `==` if they share the same `contact_group_id`. `#hash`
+is consistent with `==`, so contact groups work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns groups) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The contact group ID doesn't exist |
+
+## Common patterns
+
+### Listing all contact groups
+
+```ruby
+groups = client.contact_groups(tenant_id)
+groups.each { |g| puts g.name }
+```
+
+### Fetching members of a group
+
+```ruby
+group = client.contact_group(tenant_id, "97bbd0e6-ab4d-4117-9304-d90dd4779199")
+group.contacts.each do |c|
+  puts "#{c.name} (#{c.contact_id})"
+end
+```
+
+
+================================================================================
+FILE: docs/accounting/organisation.md
+================================================================================
+
+# Organisation
+
+A Xero **organisation** is the actual accounting entity — the company, sole
+trader, trust, etc. that owns the books. You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch one.
+
+> See: [Xero docs — Organisation](https://developer.xero.com/documentation/api/accounting/organisation)
+
+## Fetching an organisation
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+org = client.organisation("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+org = client.organisation(connection)
+```
+
+`client.organisation` hits `GET /api.xro/2.0/Organisation` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns a single
+`XeroKiwi::Accounting::Organisation`.
+
+## The Organisation object
+
+Each `XeroKiwi::Accounting::Organisation` is an immutable value object exposing the fields
+Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `organisation_id` | `String` | The unique identifier for the organisation. |
+| `api_key` | `String` | The API key (if set). |
+| `name` | `String` | The display name (e.g. "Maple Florists Ltd"). |
+| `legal_name` | `String` | The registered legal name. |
+| `pays_tax` | `Boolean` | Whether the organisation is registered for tax. |
+| `version` | `String` | The Xero edition version code (e.g. `"NZ"`, `"GLOBAL"`). |
+| `organisation_type` | `String` | The type — `"COMPANY"`, `"SOLE_TRADER"`, `"TRUST"`, etc. |
+| `base_currency` | `String` | The base currency code (e.g. `"NZD"`, `"ZAR"`). |
+| `country_code` | `String` | The two-letter country code (e.g. `"NZ"`, `"ZA"`). |
+| `is_demo_company` | `Boolean` | Whether this is a Xero demo company. |
+| `organisation_status` | `String` | `"ACTIVE"` or otherwise. |
+| `registration_number` | `String` | The company registration number. |
+| `employer_identification_number` | `String` | The EIN (US organisations). |
+| `tax_number` | `String` | The tax/VAT number. |
+| `financial_year_end_day` | `Integer` | Day of month the financial year ends (1–31). |
+| `financial_year_end_month` | `Integer` | Month the financial year ends (1–12). |
+| `sales_tax_basis` | `String` | e.g. `"Payments"`, `"CASH"`, `"ACCRUALS"`. |
+| `sales_tax_period` | `String` | e.g. `"TWOMONTHS"`, `"MONTHLY"`. |
+| `default_sales_tax` | `String` | e.g. `"Tax Exclusive"`. |
+| `default_purchases_tax` | `String` | e.g. `"Tax Exclusive"`. |
+| `period_lock_date` | `Time` | The period lock date, parsed as UTC. |
+| `end_of_year_lock_date` | `Time` | The end-of-year lock date, parsed as UTC. |
+| `created_date_utc` | `Time` | When the organisation was created, parsed as UTC. |
+| `timezone` | `String` | The organisation's timezone code (e.g. `"NEWZEALANDSTANDARDTIME"`). |
+| `organisation_entity_type` | `String` | The entity type (e.g. `"COMPANY"`). |
+| `short_code` | `String` | The Xero short code for this organisation. |
+| `organisation_class` | `String` | The Xero subscription class (e.g. `"PREMIUM"`, `"STARTER"`). |
+| `edition` | `String` | The Xero subscription edition (e.g. `"BUSINESS"`). |
+| `line_of_business` | `String` | The industry / line of business. |
+| `addresses` | `Array<XeroKiwi::Accounting::Address>` | The organisation's addresses. See [Address](address.md). |
+| `phones` | `Array<XeroKiwi::Accounting::Phone>` | The organisation's phone numbers. See [Phone](phone.md). |
+| `external_links` | `Array<XeroKiwi::Accounting::ExternalLink>` | Social/web profile links. See [ExternalLink](external-link.md). |
+| `payment_terms` | `XeroKiwi::Accounting::PaymentTerms` | Default payment terms for bills and sales. See [PaymentTerms](payment-terms.md). |
+
+## Predicates
+
+```ruby
+org.demo_company? # is_demo_company == true
+```
+
+## Equality and hashing
+
+Two organisations are `==` if they share the same `organisation_id`. `#hash`
+is consistent with `==`, so organisations work as hash keys and in sets.
+
+## Date parsing
+
+The Xero Accounting API serialises timestamps differently from the Connections
+API. Connections use ISO 8601 strings (e.g. `"2019-07-09T23:40:30.1833130"`),
+but the Accounting API (including Organisation) uses the legacy .NET JSON
+format: `/Date(1574275974000)/`.
+
+XeroKiwi handles both transparently — all `Time` attributes are parsed to UTC
+`Time` objects regardless of which format Xero sends. You don't need to think
+about this unless you're looking at raw cassette data or debugging timestamp
+issues.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns the organisation) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the `accounting.settings.read` scope |
+| 404 | `XeroKiwi::ClientError` | The tenant ID doesn't correspond to an organisation |
+
+## Common patterns
+
+### From connection to organisation
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+client.connections.each do |conn|
+  org = client.organisation(conn)
+  puts "#{org.name} (#{org.base_currency}) — #{org.country_code}"
+end
+```
+
+### Checking if it's a demo company
+
+```ruby
+org = client.organisation(tenant_id)
+if org.demo_company?
+  puts "This is a demo company — data isn't real"
+end
+```
+
+
+================================================================================
+FILE: docs/accounting/user.md
+================================================================================
+
+# Users
+
+Xero **users** are the people who have access to a Xero organisation. The Users
+endpoint is read-only — you can list and fetch users, but not create or modify
+them through the API. You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch users.
+
+> See: [Xero docs — Users](https://developer.xero.com/documentation/api/accounting/users)
+
+## Listing users
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+users = client.users("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+users = client.users(connection)
+```
+
+`client.users` hits `GET /api.xro/2.0/Users` with the `Xero-Tenant-Id` header
+set to the tenant you specify. It returns an `Array<XeroKiwi::Accounting::User>`.
+
+## Fetching a single user
+
+```ruby
+user = client.user(tenant_id, "7cf47fe2-c3dd-4c6b-9895-7ba767ba529c")
+user.email_address  # => "john.smith@mail.com"
+```
+
+`client.user` hits `GET /api.xro/2.0/Users/{UserID}` and returns a single
+`XeroKiwi::Accounting::User`, or `nil` if the response is empty.
+
+## The User object
+
+Each `XeroKiwi::Accounting::User` is an immutable value object exposing the fields
+Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `user_id` | `String` | The unique Xero identifier for the user. |
+| `email_address` | `String` | The user's email address. |
+| `first_name` | `String` | The user's first name. |
+| `last_name` | `String` | The user's last name. |
+| `updated_date_utc` | `Time` | When the user was last modified, parsed as UTC. |
+| `is_subscriber` | `Boolean` | Whether the user is the subscriber (billing owner). |
+| `organisation_role` | `String` | The user's role — see [Organisation roles](#organisation-roles) below. |
+
+## Predicates
+
+```ruby
+user.subscriber?  # is_subscriber == true
+```
+
+## Organisation roles
+
+| Role | Description |
+|------|-------------|
+| `READONLY` | Read-only access |
+| `INVOICEONLY` | Invoice-only access |
+| `STANDARD` | Standard user |
+| `FINANCIALADVISER` | Financial adviser role |
+| `MANAGEDCLIENT` | Managed client (Partner Edition only) |
+| `CASHBOOKCLIENT` | Cashbook client (Partner Edition only) |
+| `ADMIN` | Full admin access |
+
+## Equality and hashing
+
+Two users are `==` if they share the same `user_id`. `#hash` is consistent with
+`==`, so users work as hash keys and in sets.
+
+## Date parsing
+
+The `updated_date_utc` field uses Xero's .NET JSON timestamp format
+(`/Date(1516230549137+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+formats transparently — the attribute is always a UTC `Time` object.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns users) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The user ID doesn't exist in this organisation |
+
+## Common patterns
+
+### Listing all users for each tenant
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+client.connections.each do |conn|
+  users = client.users(conn)
+  puts "#{conn.tenant_name}: #{users.size} users"
+  users.each { |u| puts "  #{u.first_name} #{u.last_name} (#{u.organisation_role})" }
+end
+```
+
+### Finding the subscriber
+
+```ruby
+users = client.users(tenant_id)
+subscriber = users.find(&:subscriber?)
+puts "Billing owner: #{subscriber.email_address}" if subscriber
+```
+
+
+================================================================================
+FILE: docs/accounting/credit-note.md
+================================================================================
+
+# Credit Notes
+
+A Xero **credit note** is a document that reduces the amount owed on an
+invoice. Credit notes can be applied (allocated) to outstanding invoices. You
+need a `tenant_id` from a [connection](../connections.md) before you can fetch
+credit notes.
+
+> See: [Xero docs — Credit Notes](https://developer.xero.com/documentation/api/accounting/creditnotes)
+
+## Listing credit notes
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+credit_notes = client.credit_notes("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+credit_notes = client.credit_notes(connection)
+```
+
+`client.credit_notes` hits `GET /api.xro/2.0/CreditNotes` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::CreditNote>`.
+
+## Fetching a single credit note
+
+```ruby
+cn = client.credit_note(tenant_id, "aea95d78-ea48-456b-9b08-6bc012600072")
+cn.total  # => 100.00
+```
+
+`client.credit_note` hits `GET /api.xro/2.0/CreditNotes/{CreditNoteID}` and
+returns a single `XeroKiwi::Accounting::CreditNote`, or `nil` if the response is
+empty. The single-credit-note response includes full line item details.
+
+## The CreditNote object
+
+Each `XeroKiwi::Accounting::CreditNote` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `credit_note_id` | `String` | The unique Xero identifier. |
+| `credit_note_number` | `String` | The credit note number (e.g. `"CN-0002"`). |
+| `type` | `String` | `"ACCRECCREDIT"` (accounts receivable) or `"ACCPAYCREDIT"` (accounts payable). |
+| `contact` | `XeroKiwi::Accounting::Contact` | The contact (reference — use `contact.reference?` to check). See [Contacts](contact.md). |
+| `date` | `Time` | The date the credit note was issued, parsed as UTC. |
+| `status` | `String` | e.g. `"DRAFT"`, `"SUBMITTED"`, `"AUTHORISED"`, `"PAID"`, `"VOIDED"`. |
+| `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
+| `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items. See [Prepayments — LineItem](prepayment.md#the-lineitem-object). |
+| `sub_total` | `Numeric` | The subtotal excluding taxes. |
+| `total_tax` | `Numeric` | The total tax amount. |
+| `total` | `Numeric` | The total (subtotal + total tax). |
+| `cis_deduction` | `Numeric` | CIS deduction (UK Construction Industry Scheme only). |
+| `updated_date_utc` | `Time` | When the credit note was last modified, parsed as UTC. |
+| `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
+| `currency_rate` | `Numeric` | The currency rate (1.0 for base currency). |
+| `fully_paid_on_date` | `Time` | When the credit note was fully allocated, parsed as UTC. |
+| `reference` | `String` | Additional reference number (ACCRECCREDIT only). |
+| `sent_to_contact` | `Boolean` | Whether the credit note has been sent to the contact. |
+| `remaining_credit` | `Numeric` | The remaining credit balance. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each allocation has an `invoice` reference. |
+| `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
+| `has_attachments` | `Boolean` | Whether the credit note has attachments. |
+
+## Predicates
+
+```ruby
+cn.accounts_receivable?  # type == "ACCRECCREDIT"
+cn.accounts_payable?     # type == "ACCPAYCREDIT"
+```
+
+## Equality and hashing
+
+Two credit notes are `==` if they share the same `credit_note_id`. `#hash` is
+consistent with `==`, so credit notes work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns credit notes) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The credit note ID doesn't exist |
+
+## Common patterns
+
+### Listing credit notes with remaining credit
+
+```ruby
+credit_notes = client.credit_notes(tenant_id)
+with_credit = credit_notes.select { |cn| cn.remaining_credit.to_f > 0 }
+with_credit.each { |cn| puts "#{cn.credit_note_number}: #{cn.remaining_credit} remaining" }
+```
+
+
+================================================================================
+FILE: docs/accounting/invoice.md
+================================================================================
+
+# Invoices
+
+A Xero **invoice** is either a sales invoice (accounts receivable, `ACCREC`) or
+a purchase bill (accounts payable, `ACCPAY`). Invoices carry line items,
+payments, credit notes, and allocation details. You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch invoices.
+
+> See: [Xero docs — Invoices](https://developer.xero.com/documentation/api/accounting/invoices)
+
+## Listing invoices
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+invoices = client.invoices("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+invoices = client.invoices(connection)
+```
+
+`client.invoices` hits `GET /api.xro/2.0/Invoices` with the `Xero-Tenant-Id`
+header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::Invoice>`.
+
+**Note:** The list response returns only a summary of each contact and no line
+items. Fetch an individual invoice for full details including line items.
+
+## Fetching a single invoice
+
+```ruby
+inv = client.invoice(tenant_id, "243216c5-369e-4056-ac67-05388f86dc81")
+inv.total           # => "2025.00"
+inv.invoice_number  # => "OIT00546"
+```
+
+`client.invoice` hits `GET /api.xro/2.0/Invoices/{InvoiceID}` and returns a
+single `XeroKiwi::Accounting::Invoice`, or `nil` if the response is empty.
+
+## The Invoice object
+
+Each `XeroKiwi::Accounting::Invoice` is an immutable value object. The fields below
+cover both the list and single-invoice responses:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `invoice_id` | `String` | The unique Xero identifier. |
+| `invoice_number` | `String` | The invoice number (e.g. `"OIT00546"`). |
+| `type` | `String` | `"ACCREC"` (sales) or `"ACCPAY"` (bills). |
+| `contact` | `XeroKiwi::Accounting::Contact` | The contact (reference — use `contact.reference?` to check). See [Contacts](contact.md). |
+| `date` | `Time` | The invoice date, parsed as UTC. |
+| `due_date` | `Time` | The due date, parsed as UTC. |
+| `status` | `String` | e.g. `"DRAFT"`, `"SUBMITTED"`, `"AUTHORISED"`, `"PAID"`, `"VOIDED"`, `"DELETED"`. |
+| `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
+| `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items (empty on list, populated on single). See [Prepayments — LineItem](prepayment.md#the-lineitem-object). |
+| `sub_total` | `String/Numeric` | The subtotal excluding taxes. |
+| `total_tax` | `String/Numeric` | The total tax amount. |
+| `total` | `String/Numeric` | The total (subtotal + total tax). |
+| `total_discount` | `String/Numeric` | Total discounts on line items. |
+| `updated_date_utc` | `Time` | When the invoice was last modified, parsed as UTC. |
+| `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
+| `currency_rate` | `Numeric` | The currency rate (1.0 for base currency). |
+| `reference` | `String` | Additional reference number (ACCREC only). |
+| `branding_theme_id` | `String` | The branding theme ID. |
+| `url` | `String` | URL link to a source document. |
+| `sent_to_contact` | `Boolean` | Whether the invoice displays as "sent" in Xero. |
+| `expected_payment_date` | `Time` | Expected payment date (ACCREC only). |
+| `planned_payment_date` | `Time` | Planned payment date (ACCPAY only). |
+| `has_attachments` | `Boolean` | Whether the invoice has attachments. |
+| `repeating_invoice_id` | `String` | The repeating invoice template ID, if applicable. |
+| `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
+| `credit_notes` | `Array<Hash>` | Credit notes applied (raw hashes). |
+| `prepayments` | `Array<Hash>` | Prepayments applied (raw hashes). |
+| `overpayments` | `Array<Hash>` | Overpayments applied (raw hashes). |
+| `amount_due` | `String/Numeric` | Amount remaining to be paid. |
+| `amount_paid` | `String/Numeric` | Sum of payments received. |
+| `amount_credited` | `String/Numeric` | Sum of credit notes, overpayments, and prepayments applied. |
+| `cis_deduction` | `Numeric` | CIS deduction (UK Construction Industry Scheme only). |
+| `fully_paid_on_date` | `Time` | When the invoice was fully paid, parsed as UTC. |
+| `sales_tax_calculation_type_code` | `String` | US auto sales tax calculation type. |
+| `invoice_addresses` | `Array<Hash>` | Invoice addresses (US auto sales tax only). |
+
+## Predicates
+
+```ruby
+inv.accounts_receivable?  # type == "ACCREC"
+inv.accounts_payable?     # type == "ACCPAY"
+```
+
+## Equality and hashing
+
+Two invoices are `==` if they share the same `invoice_id`. `#hash` is consistent
+with `==`, so invoices work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns invoices) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The invoice ID doesn't exist |
+
+## Common patterns
+
+### Retrieving the online invoice URL
+
+For sales (ACCREC) invoices that are not in DRAFT status, you can retrieve the
+online invoice URL that customers can use to view and pay:
+
+```ruby
+url = client.online_invoice_url(tenant_id, "243216c5-369e-4056-ac67-05388f86dc81")
+puts url  # => "https://in.xero.com/iztKMjyAEJT7MVnmruxgCdIJUDStfRgmtdQSIW13"
+```
+
+Returns `nil` if no online invoice URL is available.
+
+### Listing outstanding invoices
+
+```ruby
+invoices = client.invoices(tenant_id)
+outstanding = invoices.select { |inv| inv.amount_due.to_f > 0 }
+outstanding.each { |inv| puts "#{inv.invoice_number}: #{inv.amount_due} due" }
+```
+
+### Fetching an invoice with full line items
+
+```ruby
+inv = client.invoice(tenant_id, "243216c5-369e-4056-ac67-05388f86dc81")
+inv.line_items.each do |li|
+  puts "  #{li.description}: #{li.line_amount}"
+end
+```
+
+
+================================================================================
+FILE: docs/accounting/payment.md
+================================================================================
+
+# Payments
+
+A Xero **payment** records money received or paid against an invoice, credit
+note, prepayment, or overpayment. Payments can be applied to approved AR and AP
+invoices, and used to refund credit notes, prepayments, and overpayments. You
+need a `tenant_id` from a [connection](../connections.md) before you can fetch
+payments.
+
+> See: [Xero docs — Payments](https://developer.xero.com/documentation/api/accounting/payments)
+
+## Listing payments
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+payments = client.payments("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+payments = client.payments(connection)
+```
+
+`client.payments` hits `GET /api.xro/2.0/Payments` with the `Xero-Tenant-Id`
+header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::Payment>`.
+
+## Fetching a single payment
+
+```ruby
+payment = client.payment(tenant_id, "b26fd49a-cbae-470a-a8f8-bcbc119e0379")
+payment.amount  # => 500.00
+```
+
+`client.payment` hits `GET /api.xro/2.0/Payments/{PaymentID}` and returns a
+single `XeroKiwi::Accounting::Payment`, or `nil` if the response is empty.
+
+## The Payment object
+
+Each `XeroKiwi::Accounting::Payment` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `payment_id` | `String` | The unique Xero identifier. |
+| `date` | `Time` | The date the payment was made, parsed as UTC. |
+| `currency_rate` | `Numeric` | Exchange rate (1.0 for base currency). |
+| `amount` | `Numeric` | The payment amount in the invoice's currency. |
+| `bank_amount` | `Numeric` | The payment amount in the account's currency. |
+| `reference` | `String` | An optional description for the payment. |
+| `is_reconciled` | `Boolean` | Whether the payment has been reconciled. |
+| `status` | `String` | e.g. `"AUTHORISED"`, `"DELETED"`. |
+| `payment_type` | `String` | e.g. `"ACCRECPAYMENT"`, `"ACCPAYPAYMENT"`. See Xero docs for all types. |
+| `updated_date_utc` | `Time` | When the payment was last modified, parsed as UTC. |
+| `batch_payment_id` | `String` | The batch payment ID, if created as part of a batch. |
+| `batch_payment` | `Hash` | Batch payment details (raw hash). |
+| `account` | `Hash` | The account the payment was made from (raw hash with `AccountID`, `Code`, `Name`). |
+| `invoice` | `Hash` | The invoice the payment was made against (raw hash). |
+| `credit_note` | `Hash` | The credit note being refunded (raw hash), if applicable. |
+| `prepayment` | `Hash` | The prepayment being refunded (raw hash), if applicable. |
+| `overpayment` | `Hash` | The overpayment being refunded (raw hash), if applicable. |
+| `has_account` | `Boolean` | Whether the payment has an associated account. |
+
+## Predicates
+
+```ruby
+payment.reconciled?  # is_reconciled == true
+```
+
+## Equality and hashing
+
+Two payments are `==` if they share the same `payment_id`. `#hash` is consistent
+with `==`, so payments work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns payments) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The payment ID doesn't exist |
+
+## Common patterns
+
+### Listing reconciled payments
+
+```ruby
+payments = client.payments(tenant_id)
+reconciled = payments.select(&:reconciled?)
+reconciled.each { |p| puts "#{p.reference}: #{p.amount}" }
+```
+
+### Finding payments for a specific invoice
+
+```ruby
+payments = client.payments(tenant_id)
+for_invoice = payments.select { |p| p.invoice&.dig("InvoiceNumber") == "INV-0001" }
+```
+
+
+================================================================================
+FILE: docs/accounting/overpayment.md
+================================================================================
+
+# Overpayments
+
+A Xero **overpayment** is an excess payment received or made beyond the amount
+of an invoice. Overpayments are created via the BankTransactions endpoint and
+refunded via the Payments endpoint. This resource lets you retrieve overpayments
+and their allocations. You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch overpayments.
+
+> See: [Xero docs — Overpayments](https://developer.xero.com/documentation/api/accounting/overpayments)
+
+## Listing overpayments
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+overpayments = client.overpayments("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+overpayments = client.overpayments(connection)
+```
+
+`client.overpayments` hits `GET /api.xro/2.0/Overpayments` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::Overpayment>`.
+
+## Fetching a single overpayment
+
+```ruby
+op = client.overpayment(tenant_id, "aea95d78-ea48-456b-9b08-6bc012600072")
+op.total  # => "100.00"
+```
+
+`client.overpayment` hits `GET /api.xro/2.0/Overpayments/{OverpaymentID}` and
+returns a single `XeroKiwi::Accounting::Overpayment`, or `nil` if the response is
+empty.
+
+## The Overpayment object
+
+Each `XeroKiwi::Accounting::Overpayment` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `overpayment_id` | `String` | The unique Xero identifier. |
+| `type` | `String` | `"RECEIVE-OVERPAYMENT"` or `"SPEND-OVERPAYMENT"`. |
+| `contact` | `XeroKiwi::Accounting::Contact` | The contact (reference — use `contact.reference?` to check). See [Contacts](contact.md). |
+| `date` | `Time` | The date the overpayment was made, parsed as UTC. |
+| `status` | `String` | e.g. `"AUTHORISED"`, `"PAID"`, `"VOIDED"`. |
+| `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
+| `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items. See [Prepayments — LineItem](prepayment.md#the-lineitem-object). |
+| `sub_total` | `String` | The subtotal excluding taxes. |
+| `total_tax` | `String` | The total tax amount. |
+| `total` | `String` | The total (subtotal + total tax). |
+| `updated_date_utc` | `Time` | When the overpayment was last modified, parsed as UTC. |
+| `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
+| `currency_rate` | `String` | The currency rate (1.0 for base currency). |
+| `remaining_credit` | `String` | The remaining credit balance. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each allocation has an `invoice` reference. |
+| `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
+| `has_attachments` | `Boolean` | Whether the overpayment has attachments. |
+| `reference` | `String` | Reference for the overpayment. |
+
+## Predicates
+
+```ruby
+op.receive?  # type == "RECEIVE-OVERPAYMENT"
+op.spend?    # type == "SPEND-OVERPAYMENT"
+```
+
+## Equality and hashing
+
+Two overpayments are `==` if they share the same `overpayment_id`. `#hash` is
+consistent with `==`, so overpayments work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns overpayments) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The overpayment ID doesn't exist |
+
+## Common patterns
+
+### Listing overpayments with remaining credit
+
+```ruby
+overpayments = client.overpayments(tenant_id)
+with_credit = overpayments.select { |op| op.remaining_credit.to_f > 0 }
+with_credit.each { |op| puts "#{op.overpayment_id}: #{op.remaining_credit} remaining" }
+```
+
+
+================================================================================
+FILE: docs/accounting/prepayment.md
+================================================================================
+
+# Prepayments
+
+A Xero **prepayment** is a payment received or made in advance of an invoice.
+Prepayments are created via the BankTransactions endpoint and refunded via the
+Payments endpoint. This resource lets you retrieve prepayments and their
+allocations. You need a `tenant_id` from a [connection](../connections.md)
+before you can fetch prepayments.
+
+> See: [Xero docs — Prepayments](https://developer.xero.com/documentation/api/accounting/prepayments)
+
+## Listing prepayments
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+prepayments = client.prepayments("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+prepayments = client.prepayments(connection)
+```
+
+`client.prepayments` hits `GET /api.xro/2.0/Prepayments` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::Prepayment>`.
+
+## Fetching a single prepayment
+
+```ruby
+prepayment = client.prepayment(tenant_id, "aea95d78-ea48-456b-9b08-6bc012600072")
+prepayment.total  # => "100.00"
+```
+
+`client.prepayment` hits `GET /api.xro/2.0/Prepayments/{PrepaymentID}` and
+returns a single `XeroKiwi::Accounting::Prepayment`, or `nil` if the response is
+empty.
+
+## The Prepayment object
+
+Each `XeroKiwi::Accounting::Prepayment` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `prepayment_id` | `String` | The unique Xero identifier. |
+| `type` | `String` | `"RECEIVE-PREPAYMENT"` or `"SPEND-PREPAYMENT"`. |
+| `contact` | `XeroKiwi::Accounting::Contact` | The contact (reference — use `contact.reference?` to check). See [Contacts](contact.md). |
+| `date` | `Time` | The date the prepayment was created, parsed as UTC. |
+| `status` | `String` | e.g. `"AUTHORISED"`, `"PAID"`, `"VOIDED"`. |
+| `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
+| `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items. See [LineItem](#the-lineitem-object). |
+| `sub_total` | `String` | The subtotal excluding taxes. |
+| `total_tax` | `String` | The total tax amount. |
+| `total` | `String` | The total (subtotal + total tax). |
+| `updated_date_utc` | `Time` | When the prepayment was last modified, parsed as UTC. |
+| `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
+| `currency_rate` | `String` | The currency rate (1.0 for base currency). |
+| `invoice_number` | `String` | The invoice number (for receive prepayments only). |
+| `remaining_credit` | `String` | The remaining credit balance. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each allocation has an `invoice` reference. |
+| `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
+| `has_attachments` | `Boolean` | Whether the prepayment has attachments. |
+| `fully_paid_on_date` | `Time` | When the prepayment was fully allocated, parsed as UTC. |
+
+## The LineItem object
+
+Each `XeroKiwi::Accounting::LineItem` is an immutable value object shared across
+documents (prepayments, invoices, etc.):
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `description` | `String` | Line item description. |
+| `quantity` | `Float` | Quantity. |
+| `unit_amount` | `Float` | Unit amount. |
+| `account_code` | `String` | The account code. |
+| `tax_type` | `String` | The tax type override. |
+| `tax_amount` | `Float` | The calculated tax amount. |
+| `line_amount` | `Float` | The line total. |
+| `tracking` | `Array<Hash>` | Tracking categories (raw, max 2 per line). |
+
+## Predicates
+
+```ruby
+prepayment.receive?  # type == "RECEIVE-PREPAYMENT"
+prepayment.spend?    # type == "SPEND-PREPAYMENT"
+```
+
+## Equality and hashing
+
+Two prepayments are `==` if they share the same `prepayment_id`. `#hash` is
+consistent with `==`, so prepayments work as hash keys and in sets.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns prepayments) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The prepayment ID doesn't exist |
+
+## Common patterns
+
+### Listing prepayments with remaining credit
+
+```ruby
+prepayments = client.prepayments(tenant_id)
+with_credit = prepayments.select { |p| p.remaining_credit.to_f > 0 }
+with_credit.each { |p| puts "#{p.prepayment_id}: #{p.remaining_credit} remaining" }
+```
+
+
+================================================================================
+FILE: docs/accounting/branding-theme.md
+================================================================================
+
+# Branding Themes
+
+A Xero **branding theme** controls the look and feel of invoices, quotes, and
+other documents — logo, colours, layout. Every organisation has at least one
+(the default "Standard" theme). You need a `tenant_id` from a
+[connection](../connections.md) before you can fetch branding themes.
+
+> See: [Xero docs — Branding Themes](https://developer.xero.com/documentation/api/accounting/brandingthemes)
+
+## Listing branding themes
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+# Pass a tenant ID string…
+themes = client.branding_themes("70784a63-d24b-46a9-a4db-0e70a274b056")
+
+# …or a XeroKiwi::Connection (its tenant_id is used automatically).
+connection = client.connections.first
+themes = client.branding_themes(connection)
+```
+
+`client.branding_themes` hits `GET /api.xro/2.0/BrandingThemes` with the
+`Xero-Tenant-Id` header set to the tenant you specify. It returns an
+`Array<XeroKiwi::Accounting::BrandingTheme>`.
+
+## Fetching a single branding theme
+
+```ruby
+theme = client.branding_theme(tenant_id, "dfe23d27-a3a6-4ef3-a5ca-b9e02b142dde")
+theme.name  # => "Special Projects"
+```
+
+`client.branding_theme` hits `GET /api.xro/2.0/BrandingThemes/{BrandingThemeID}`
+and returns a single `XeroKiwi::Accounting::BrandingTheme`, or `nil` if the
+response is empty.
+
+## The BrandingTheme object
+
+Each `XeroKiwi::Accounting::BrandingTheme` is an immutable value object exposing the
+fields Xero returns:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `branding_theme_id` | `String` | The unique Xero identifier for the branding theme. |
+| `name` | `String` | The display name (e.g. "Standard", "Special Projects"). |
+| `logo_url` | `String` | The URL of the logo image used on the theme. May be `nil` if no custom logo is set. |
+| `type` | `String` | The document type the theme applies to (always `"INVOICE"`). |
+| `sort_order` | `Integer` | Ranked order of the theme. The default theme has a value of `0`. |
+| `created_date_utc` | `Time` | When the theme was created, parsed as UTC. |
+
+## Equality and hashing
+
+Two branding themes are `==` if they share the same `branding_theme_id`.
+`#hash` is consistent with `==`, so branding themes work as hash keys and in
+sets.
+
+## Date parsing
+
+The `created_date_utc` field uses Xero's .NET JSON timestamp format
+(`/Date(946684800000+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+formats transparently — the attribute is always a UTC `Time` object.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns themes) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the required scope |
+| 404 | `XeroKiwi::ClientError` | The branding theme ID doesn't exist in this organisation |
+
+## Common patterns
+
+### Listing all themes for a tenant
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+themes = client.branding_themes(tenant_id)
+themes.each do |theme|
+  puts "#{theme.name} (sort: #{theme.sort_order})"
+end
+```
+
+### Finding the default theme
+
+```ruby
+themes  = client.branding_themes(tenant_id)
+default = themes.find { |t| t.sort_order == 0 }
+puts "Default theme: #{default.name}"
+```
+
+
+================================================================================
+FILE: docs/accounting/address.md
+================================================================================
+
+# XeroKiwi::Accounting::Address
+
+A Xero address. Used by [Organisation](organisation.md), and in future by
+Contact and other resources.
+
+> See: [Xero docs — Address types](https://developer.xero.com/documentation/api/accounting/types#addresses)
+
+## Usage
+
+```ruby
+org.addresses.each do |address|
+  puts "#{address.address_type}: #{address.address_line_1}, #{address.city}"
+end
+
+street = org.addresses.find(&:street?)
+```
+
+## Attributes
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `address_type` | `String` | `"POBOX"`, `"STREET"`, or `"DELIVERY"` |
+| `address_line_1` | `String` | Max 500 characters |
+| `address_line_2` | `String` | Max 500 characters |
+| `address_line_3` | `String` | Max 500 characters |
+| `address_line_4` | `String` | Max 500 characters |
+| `city` | `String` | Max 255 characters |
+| `region` | `String` | Max 255 characters |
+| `postal_code` | `String` | Max 50 characters |
+| `country` | `String` | Max 50 characters, letters only |
+| `attention_to` | `String` | Max 255 characters |
+
+## Predicates
+
+```ruby
+address.street?   # address_type == "STREET"
+address.pobox?    # address_type == "POBOX"
+address.delivery? # address_type == "DELIVERY"
+```
+
+Note: `DELIVERY` is read-only via Xero's GET endpoint (if set) and is not
+valid for Contacts — only for Organisations.
+
+## Equality
+
+Two addresses are `==` if all their attributes match. `#hash` is consistent
+with `==`.
+
+## Serialisation
+
+```ruby
+address.to_h
+# => { address_type: "STREET", address_line_1: "123 Main St", ... }
+```
+
+
+================================================================================
+FILE: docs/accounting/phone.md
+================================================================================
+
+# XeroKiwi::Accounting::Phone
+
+A Xero phone number. Used by [Organisation](organisation.md), and in future by
+Contact and other resources.
+
+> See: [Xero docs — Phone types](https://developer.xero.com/documentation/api/accounting/types#phones)
+
+## Usage
+
+```ruby
+org.phones.each do |phone|
+  puts "#{phone.phone_type}: #{phone.phone_country_code} #{phone.phone_area_code} #{phone.phone_number}"
+end
+
+mobile = org.phones.find(&:mobile?)
+```
+
+## Attributes
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `phone_type` | `String` | `"DEFAULT"`, `"DDI"`, `"MOBILE"`, or `"FAX"` |
+| `phone_number` | `String` | Max 50 characters |
+| `phone_area_code` | `String` | Max 10 characters |
+| `phone_country_code` | `String` | Max 20 characters |
+
+## Predicates
+
+```ruby
+phone.default? # phone_type == "DEFAULT"
+phone.mobile?  # phone_type == "MOBILE"
+phone.fax?     # phone_type == "FAX"
+```
+
+## Equality
+
+Two phones are `==` if all their attributes match. `#hash` is consistent
+with `==`.
+
+## Serialisation
+
+```ruby
+phone.to_h
+# => { phone_type: "DEFAULT", phone_number: "1234567", phone_area_code: "09", phone_country_code: "64" }
+```
+
+
+================================================================================
+FILE: docs/accounting/external-link.md
+================================================================================
+
+# XeroKiwi::Accounting::ExternalLink
+
+A Xero external link (social or web profile). Used by
+[Organisation](organisation.md).
+
+> See: [Xero docs — External link types](https://developer.xero.com/documentation/api/accounting/types#externallinks)
+
+## Usage
+
+```ruby
+org.external_links.each do |link|
+  puts "#{link.link_type}: #{link.url}"
+end
+```
+
+## Attributes
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `link_type` | `String` | `"Facebook"`, `"GooglePlus"`, `"LinkedIn"`, `"Twitter"`, or `"Website"` |
+| `url` | `String` | The URL for the service |
+
+## Equality
+
+Two external links are `==` if all their attributes match. `#hash` is
+consistent with `==`.
+
+## Serialisation
+
+```ruby
+link.to_h
+# => { link_type: "Facebook", url: "https://facebook.com/example" }
+```
+
+
+================================================================================
+FILE: docs/accounting/payment-terms.md
+================================================================================
+
+# XeroKiwi::Accounting::PaymentTerms
+
+Default payment terms for an organisation or contact, containing separate
+terms for bills (accounts payable) and sales invoices (accounts receivable).
+
+> See: [Xero docs — Payment terms](https://developer.xero.com/documentation/api/accounting/types#paymentterms)
+
+## Usage
+
+```ruby
+if org.payment_terms
+  bills = org.payment_terms.bills
+  sales = org.payment_terms.sales
+
+  puts "Bills due: day #{bills.day} (#{bills.type})" if bills
+  puts "Sales due: day #{sales.day} (#{sales.type})" if sales
+end
+```
+
+## PaymentTerms attributes
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `bills` | `XeroKiwi::Accounting::PaymentTerm` | Default terms for accounts payable. `nil` if not configured. |
+| `sales` | `XeroKiwi::Accounting::PaymentTerm` | Default terms for accounts receivable. `nil` if not configured. |
+
+`PaymentTerms` itself is `nil` on the parent object when the organisation or
+contact has no payment terms configured at all.
+
+## PaymentTerm attributes
+
+Each side (bills or sales) is a `XeroKiwi::Accounting::PaymentTerm`:
+
+| Attribute | Type | Notes |
+|-----------|------|-------|
+| `day` | `Integer` | Day of month (0–31) |
+| `type` | `String` | The payment term type (see below) |
+
+### Payment term types
+
+| Type | Meaning |
+|------|---------|
+| `DAYSAFTERBILLDATE` | Day(s) after bill date |
+| `DAYSAFTERBILLMONTH` | Day(s) after bill month |
+| `OFCURRENTMONTH` | Of the current month |
+| `OFFOLLOWINGMONTH` | Of the following month |
+
+## Equality
+
+Two `PaymentTerms` are `==` if both their `bills` and `sales` are equal. Two
+`PaymentTerm` objects are `==` if they share the same `day` and `type`.
+
+## Serialisation
+
+```ruby
+org.payment_terms.to_h
+# => { bills: { day: 15, type: "OFCURRENTMONTH" }, sales: { day: 20, type: "OFFOLLOWINGMONTH" } }
+```
+
+
+================================================================================
+FILE: docs/errors.md
+================================================================================
+
+# Errors
+
+Every failure path in XeroKiwi raises a typed exception. This page walks through
+the hierarchy, explains what each class means, and tells you what to catch
+in common situations.
+
+## The hierarchy
+
+```
+StandardError
+└─ XeroKiwi::Error                       (root — catch this for "anything XeroKiwi raised")
+   ├─ XeroKiwi::APIError                 (root for HTTP responses; carries status + body)
+   │  ├─ XeroKiwi::AuthenticationError   (401)
+   │  │  ├─ XeroKiwi::TokenRefreshError  (refresh round-trip failed)
+   │  │  └─ XeroKiwi::OAuth::CodeExchangeError  (auth-code exchange failed)
+   │  ├─ XeroKiwi::ClientError           (other 4xx)
+   │  ├─ XeroKiwi::ServerError           (5xx)
+   │  └─ XeroKiwi::RateLimitError        (429, with retry_after + problem)
+   ├─ XeroKiwi::OAuth::StateMismatchError  (CSRF check failed)
+   └─ XeroKiwi::OAuth::IDTokenError        (ID token JWT verification failed)
+```
+
+A few things worth noticing about the shape:
+
+- **Everything XeroKiwi raises** descends from `XeroKiwi::Error`. If you only want
+  one rescue clause for "the Xero integration broke," catch this.
+- **HTTP responses** descend from `XeroKiwi::APIError`, which carries `status`
+  and `body` attributes you can inspect.
+- **OAuth-specific errors** for state mismatch and ID token verification
+  descend from `XeroKiwi::Error` directly (not `APIError`) because they don't
+  come from an HTTP response — they're local validation failures.
+- **`XeroKiwi::TokenRefreshError`** and **`XeroKiwi::OAuth::CodeExchangeError`** are
+  both `AuthenticationError` subclasses, because the practical recovery is
+  the same as for any 401: the user needs to re-authorise.
+
+## Class reference
+
+### `XeroKiwi::Error`
+
+The root class. Inherits from `StandardError`. You almost never raise this
+directly — it exists as a catch-all for code that wants to rescue "any XeroKiwi
+problem" without enumerating every subclass.
+
+### `XeroKiwi::APIError`
+
+The base class for HTTP errors. Constructor: `APIError.new(status, body, message = nil)`.
+
+Attributes:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `error.status` | `Integer` | The HTTP status code (e.g. 401, 429, 500). |
+| `error.body` | parsed body | The response body, parsed as JSON when the response was JSON, otherwise the raw string. |
+| `error.message` | `String` | A descriptive message. Defaults to `"Xero API responded with #{status}: #{body.inspect}"`. |
+
+### `XeroKiwi::AuthenticationError` (HTTP 401)
+
+The access token was rejected. The most common causes:
+
+- Token has expired and there's no refresh capability.
+- Token was revoked.
+- Token has the wrong scopes for this endpoint.
+- The wrong tenant ID was passed in the `Xero-Tenant-Id` header.
+
+If your client has refresh capability, XeroKiwi will already have tried to
+refresh and retry exactly once before this raises. Seeing `AuthenticationError`
+on a refresh-capable client means **the second 401 also failed** — refresh
+won't fix it, and you need to either re-authorise or surface the error.
+
+### `XeroKiwi::TokenRefreshError`
+
+A subclass of `AuthenticationError`. Raised when the refresh round-trip
+itself fails. Most common cause: **the refresh token has been rotated by
+another process** (see [the rotation gotcha in the tokens
+doc](tokens.md#refresh-token-rotation)).
+
+This is different from "the user must re-auth" in subtle ways:
+
+- **Refresh token rotated**: another process refreshed before you did.
+  Reload the credential from storage and retry.
+- **Refresh token genuinely expired** (60 days unused): the user must
+  re-authorise.
+
+You can't tell these apart from the exception alone — both look like
+`invalid_grant` from Xero. The recovery pattern in
+[Tokens — multi-process refresh](tokens.md#multi-process-refresh) handles
+both cases.
+
+### `XeroKiwi::OAuth::CodeExchangeError`
+
+Also a subclass of `AuthenticationError`. Raised when `oauth.exchange_code`
+fails:
+
+- The auth code expired (Xero's codes are very short-lived).
+- The code was already used (codes are single-use).
+- The `redirect_uri` doesn't match what was used at authorise time.
+- The PKCE verifier doesn't match the challenge sent at authorise time.
+- The client credentials are wrong.
+
+The user needs to restart the OAuth flow from the authorise step.
+
+### `XeroKiwi::ClientError` (other HTTP 4xx)
+
+A 4xx response that isn't 401 or 429. Most commonly:
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Bad request — usually a malformed body or query param |
+| 403 | The token is valid but doesn't have the right scope/permission |
+| 404 | The resource doesn't exist (or was already deleted) |
+| 422 | Validation error — Xero rejected the payload |
+
+The body will usually contain a Xero-specific error structure with details.
+Inspect `error.body` to surface it.
+
+### `XeroKiwi::ServerError` (HTTP 5xx)
+
+A 5xx response that wasn't retried. XeroKiwi retries 502/503/504 automatically
+(see [retries and rate limits](retries-and-rate-limits.md)) so by the time
+you see this, the retries are exhausted or the status was 500 (which XeroKiwi
+deliberately doesn't retry, since 500s are usually persistent bugs in the
+request rather than transient infrastructure issues).
+
+### `XeroKiwi::RateLimitError` (HTTP 429)
+
+A subclass of `APIError`. Raised when retries on a 429 are exhausted.
+
+Extra attributes beyond `APIError`:
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `error.retry_after` | `Float` or `nil` | The value of the `Retry-After` header in seconds, if Xero sent one. |
+| `error.problem` | `String` or `nil` | The value of the `X-Rate-Limit-Problem` header — typically `"minute"`, `"day"`, or `"appminute"`. Tells you which limit you hit. |
+
+`retry_after` lets your application decide how to back off — for example, a
+Sidekiq job can re-enqueue itself with that delay rather than hammering
+Xero.
+
+### `XeroKiwi::OAuth::StateMismatchError`
+
+Raised by `XeroKiwi::OAuth.verify_state!` when the `state` parameter Xero
+echoed back doesn't match what you stashed before redirecting. **This
+indicates a forged callback or a session that was lost between request and
+response.** Treat it as a security event — log it and refuse to proceed.
+
+This is *not* a Xero error; it's a local CSRF check that fires before any
+HTTP call.
+
+### `XeroKiwi::OAuth::IDTokenError`
+
+Raised by `XeroKiwi::OAuth::IDToken.verify` (or `oauth.verify_id_token`) when
+the ID token JWT can't be verified. Causes:
+
+- Bad signature.
+- Wrong issuer.
+- Wrong audience.
+- Token expired.
+- Nonce mismatch (when nonce verification was requested).
+- Network failure fetching JWKS.
+
+The error message has a brief description of which check failed (e.g.
+`"ID token verification failed: Signature verification failed"`,
+`"ID token nonce mismatch"`).
+
+## What to catch when
+
+### "Any XeroKiwi failure"
+
+```ruby
+begin
+  client.connections
+rescue XeroKiwi::Error => e
+  Rails.logger.error("Xero call failed: #{e.message}")
+end
+```
+
+### "Authentication broke; user needs to re-auth"
+
+```ruby
+begin
+  client.connections
+rescue XeroKiwi::AuthenticationError
+  redirect_to xero_reauth_path
+end
+```
+
+This catches `TokenRefreshError` and `CodeExchangeError` too, since they're
+both `AuthenticationError` subclasses. That's usually what you want — they
+all imply "the credentials are dead, restart the flow."
+
+### "Rate limited — back off"
+
+```ruby
+begin
+  client.connections
+rescue XeroKiwi::RateLimitError => e
+  RetryWorker.perform_in(e.retry_after.seconds, args)
+end
+```
+
+### "Anything Xero said no to"
+
+```ruby
+begin
+  client.connections
+rescue XeroKiwi::APIError => e
+  Rails.logger.warn("Xero #{e.status}: #{e.body}")
+  raise
+end
+```
+
+### "OAuth callback failed for any reason"
+
+```ruby
+def callback
+  XeroKiwi::OAuth.verify_state!(received: params[:state], expected: session.delete(:xero_state))
+  token = oauth.exchange_code(code: params[:code], code_verifier: session.delete(:xero_verifier))
+  oauth.verify_id_token(token.id_token)
+  # ...
+rescue XeroKiwi::OAuth::StateMismatchError
+  redirect_to root_path, alert: "Authentication failed (CSRF check)"
+rescue XeroKiwi::OAuth::CodeExchangeError
+  redirect_to root_path, alert: "Could not complete Xero authorisation"
+rescue XeroKiwi::OAuth::IDTokenError
+  redirect_to root_path, alert: "Could not verify Xero identity"
+end
+```
+
+Three separate rescue clauses give you three different user-facing
+messages, which is usually what you want for an OAuth callback — different
+failures imply different user actions.
+
+### Distinguishing TokenRefreshError from generic 401
+
+If you want to handle the rotation race specifically:
+
+```ruby
+begin
+  client.connections
+rescue XeroKiwi::TokenRefreshError
+  credential.reload
+  if credential.refresh_token != original_refresh_token
+    retry # another process refreshed; pick up their token
+  else
+    credential.update!(needs_reauth: true)
+    raise
+  end
+rescue XeroKiwi::AuthenticationError
+  # 401 that wasn't a refresh failure (e.g. token revoked at Xero's end)
+  credential.update!(needs_reauth: true)
+end
+```
+
+Order matters — `TokenRefreshError` is more specific than
+`AuthenticationError`, so it must come first.
+
+## Things the error system deliberately does NOT do
+
+- **No "this error is retryable" predicate.** XeroKiwi already retries the
+  cases that *should* be retried at the HTTP level. By the time an exception
+  reaches your code, the retries are exhausted and the situation is
+  application-level. Adding `error.retryable?` would create a tempting
+  foot-gun where callers retry inside their own code, doubling up on the
+  retries XeroKiwi is already doing.
+- **No automatic Sentry / Bugsnag integration.** Errors raise normally;
+  configure your own observability layer to catch them at the boundary.
+- **No `error.code` enum.** The HTTP `status` is the enum. Inspecting it
+  in user code is usually fine (`error.status == 404`).
+- **No localised error messages.** Messages are English and developer-facing.
+  Translate them to user-facing language at your application's surface,
+  not in the gem.
+
+
+================================================================================
+FILE: docs/retries-and-rate-limits.md
+================================================================================
+
+# Retries and rate limits
+
+This doc explains how XeroKiwi handles transient failures: rate limiting, server
+errors, and network blips. Most of the time you don't need to know any of
+this — the defaults are sensible. Read on if you need to tune the retry
+policy or you want to understand what's happening when a request mysteriously
+takes 4 seconds.
+
+## Xero's rate limits
+
+Xero enforces three separate rate limits, all returned with HTTP 429:
+
+| Limit | Default | Header indicator |
+|-------|---------|------------------|
+| Per-minute (per tenant) | 60 calls | `X-Rate-Limit-Problem: minute` |
+| Daily (per tenant) | 5,000 calls | `X-Rate-Limit-Problem: day` |
+| Per-app per-minute | 10,000 calls | `X-Rate-Limit-Problem: appminute` |
+| Concurrent | 10 simultaneous requests | (no specific problem header) |
+
+Plus a `Retry-After` header on every 429 telling you how many seconds to
+wait before trying again.
+
+## What XeroKiwi does automatically
+
+XeroKiwi sets up a `faraday-retry` middleware that handles transient failures
+without any code from you. The default retry policy:
+
+| Setting | Default | Why |
+|---------|---------|-----|
+| `max` | 4 retries | High enough to ride out most rate-limit pauses, low enough to fail fast on real outages. |
+| `interval` | 0.5 s | Initial wait. |
+| `backoff_factor` | 2 | Exponential backoff. So waits are roughly 0.5s, 1s, 2s, 4s. |
+| `interval_randomness` | 0.5 | ±50% jitter on each wait, so a herd of clients doesn't refresh in lockstep. |
+| `retry_statuses` | `[429, 502, 503, 504]` | Statuses that get retried. |
+| `methods` | All HTTP methods | Including POST/PUT/DELETE. (Xero's idempotency makes this safe.) |
+| `exceptions` | `Faraday::ConnectionFailed`, `Faraday::TimeoutError`, `Faraday::RetriableResponse`, `Errno::ETIMEDOUT` | Transport-level failures that get retried. |
+
+### Retry-After is honoured
+
+`faraday-retry` automatically respects the `Retry-After` header on 429
+responses. So if Xero says "wait 30 seconds," XeroKiwi waits 30 seconds before
+retrying — not the exponential backoff schedule. This is the whole reason
+to use a real retry middleware instead of rolling your own.
+
+### Which 5xx are retried
+
+XeroKiwi retries `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway
+Timeout`. These are the canonical "the upstream is having a temporary
+problem" statuses.
+
+**500 Internal Server Error is deliberately NOT retried.** A 500 usually
+means Xero hit a real bug in handling your request — retrying the same
+request will give the same 500. If you want to retry 500s in your own
+code, catch `XeroKiwi::ServerError` and handle it explicitly.
+
+### What happens after retries are exhausted
+
+| Scenario | Final exception |
+|----------|-----------------|
+| All retries returned 429 | `XeroKiwi::RateLimitError` (with `retry_after` and `problem` attributes) |
+| All retries returned 502/503/504 | `XeroKiwi::ServerError` |
+| All retries failed at the transport level | The underlying `Faraday::ConnectionFailed` / `Faraday::TimeoutError` |
+
+The retried request count includes the original attempt, so `max: 4` means
+**up to 5 total HTTP requests** before giving up.
+
+## Customising the retry policy
+
+Pass `retry_options:` to `XeroKiwi::Client.new`. The hash is merged into XeroKiwi's
+defaults, so you only specify what you want to change:
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  retry_options: {
+    max:      8,    # try up to 8 retries
+    interval: 1.0   # initial 1s wait instead of 0.5s
+  }
+)
+```
+
+### Common customisations
+
+**Aggressive retries for batch jobs that can wait:**
+
+```ruby
+retry_options: {
+  max:            10,
+  interval:       2.0,
+  backoff_factor: 2
+}
+# Waits up to ~17 minutes total (2, 4, 8, 16, 32, 64, 128, 256, 512, 1024 seconds)
+```
+
+**No retries (e.g. for tests):**
+
+```ruby
+retry_options: { max: 0 }
+```
+
+**Tight retries with no jitter (also for tests):**
+
+```ruby
+retry_options: {
+  max:                 2,
+  interval:            0,
+  interval_randomness: 0,
+  backoff_factor:      1
+}
+```
+
+This is what XeroKiwi's own test suite uses to keep specs deterministic and
+fast.
+
+**Adding 500 to the retry list** (against my advice, but sometimes you
+have a known-flaky upstream):
+
+```ruby
+retry_options: {
+  retry_statuses: [429, 500, 502, 503, 504]
+}
+```
+
+### One thing you must NOT remove
+
+XeroKiwi's default `exceptions:` list includes `Faraday::RetriableResponse`,
+which is the *internal* signal `faraday-retry` uses to flag a status-code
+retry. **It must stay in the list**, or the retry middleware can't catch
+its own retry signal and 429s/503s will never be retried — they'll bubble
+straight up as raw `Faraday::RetriableResponse` exceptions.
+
+If you override `exceptions:`, make sure to include the four defaults:
+
+```ruby
+retry_options: {
+  exceptions: [
+    Faraday::ConnectionFailed,
+    Faraday::TimeoutError,
+    Faraday::RetriableResponse, # ← critical
+    Errno::ETIMEDOUT,
+    MyOwnException               # add your own
+  ]
+}
+```
+
+In practice, you almost never need to override this list — the defaults
+cover everything Xero will throw at you.
+
+## How the middleware stack is wired
+
+The order of Faraday middleware matters and was the source of one nasty
+bug during development. The chain looks like this:
+
+```
+ResponseHandler  ← outermost, catches errors AFTER retries are exhausted
+↓
+Retry           ← retries 429/503/etc on the way back, respects Retry-After
+↓
+JSON            ← parses response bodies
+↓
+Adapter         ← actually makes the HTTP call
+```
+
+The trick is putting **`ResponseHandler` outside `Retry`**. If they were the
+other way round, a 429 would go: adapter returns env → JSON parses →
+ResponseHandler raises `RateLimitError` → Retry catches the exception →
+needs to know about `RateLimitError` to know to retry it. That's brittle.
+
+By putting Retry on the inside, the retry middleware sees raw HTTP envs
+with status 429 and uses its own `retry_statuses` config to decide what to
+do. ResponseHandler only sees the *final* env (after retries are done) and
+maps it to a XeroKiwi exception.
+
+You don't need to think about any of this — it's the gem's job — but if
+you ever subclass the client or insert your own middleware, this is the
+ordering to preserve.
+
+## Token refresh on 401
+
+Token refresh isn't part of the retry middleware — it's handled separately
+by `XeroKiwi::Client#with_authenticated_request` (see [Client — request
+lifecycle](client.md#the-request-lifecycle)). The two systems compose
+cleanly:
+
+1. Client wraps the call in `with_authenticated_request`.
+2. The retry middleware retries 429/503 inside the wrapper.
+3. If retries are exhausted with a 401, ResponseHandler raises
+   `AuthenticationError`.
+4. `with_authenticated_request` catches it, refreshes the token, and
+   retries the *outer* call exactly once.
+
+Crucially, step 4 retries the **whole call**, including the retry
+middleware. So a single API call can trigger up to `max + 1` HTTP attempts
+*twice*: once before the refresh, once after.
+
+## Concurrency notes
+
+The retry middleware is per-request, not per-client, so multiple concurrent
+requests on the same `XeroKiwi::Client` each get their own retry budget. Two
+threads racing on a rate-limited tenant will each see independent
+retry/backoff schedules — they won't coordinate.
+
+If you need cross-thread coordination (e.g. "all threads should pause when
+any one of them hits a 429"), build it at the application level using a
+shared semaphore or rate limiter. XeroKiwi doesn't ship one, because the right
+shape depends entirely on your traffic patterns.
+
+## Things the retry layer deliberately does NOT do
+
+- **No retry on 500.** 500s are usually persistent. If you want them
+  retried, add to `retry_statuses` explicitly.
+- **No retry on 4xx (other than 429).** 4xx means the client did something
+  wrong; retrying won't fix it. The exception is 429 (rate limit), which is
+  classified as 4xx but is fundamentally a "wait and try again" signal.
+- **No global rate limiter.** XeroKiwi reacts to 429s as they happen but
+  doesn't proactively throttle — it'll happily fire 100 concurrent requests
+  and rely on Xero's 429s to slow things down. If you need proactive
+  throttling, do it at your job-queue level.
+- **No retry budget across calls.** Each `client.connections` (or any
+  other call) gets a fresh `max` retries. There's no concept of "this client
+  has had too many retries today and should stop trying."
+- **No automatic Sidekiq integration.** When `RateLimitError` raises, it's
+  up to your job to re-enqueue using the `retry_after` value. XeroKiwi exposes
+  it; what you do with it is your call.
+

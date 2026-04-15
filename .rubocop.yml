@@ -1,0 +1,150 @@
+plugins:
+  - rubocop-rspec
+
+AllCops:
+  TargetRubyVersion: 3.4
+  NewCops: enable
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+Layout/HashAlignment:
+  EnforcedHashRocketStyle: table
+  EnforcedColonStyle:      table
+
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/ExtraSpacing:
+  ForceEqualSignAlignment: true
+  Severity:                warning
+
+Layout/SpaceAroundMethodCallOperator:
+  Enabled: false
+
+Layout/SpaceAroundOperators:
+  Enabled: true
+
+Layout/EmptyLinesAroundAttributeAccessor:
+  Enabled: true
+
+Lint/DeprecatedOpenSSLConstant:
+  Enabled: true
+
+Lint/AmbiguousBlockAssociation:
+  Enabled: false
+
+Lint/RaiseException:
+  Enabled: true
+
+Lint/StructNewOverride:
+  Enabled: true
+
+Naming/MemoizedInstanceVariableName:
+  EnforcedStyleForLeadingUnderscores: required
+
+Naming/VariableNumber:
+  EnforcedStyle: snake_case
+
+RSpec/EmptyExampleGroup:
+  Exclude:
+    - 'spec/policies/**/*'
+
+RSpec/MultipleMemoizedHelpers:
+  Enabled: false
+
+RSpec/NestedGroups:
+  Max: 5
+
+RSpec/Pending:
+  Enabled:  true
+  Severity: warning
+
+RSpec/NamedSubject:
+  Enabled: false
+
+RSpec/ExampleLength:
+  Max: 10
+  CountAsOne:
+    - array
+    - heredoc
+    - hash
+
+RSpec/MultipleExpectations:
+  Max: 5
+
+RSpec/SpecFilePathFormat:
+  CustomTransform:
+    OAuth: oauth
+
+Style/ClassAndModuleChildren:
+  Enabled: false
+
+Style/ExponentialNotation:
+  Enabled: true
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+
+Style/ExpandPathArguments:
+  Enabled: false
+
+Style/HashEachMethods:
+  Enabled: true
+
+Style/HashTransformKeys:
+  Enabled: true
+
+Style/HashTransformValues:
+  Enabled: true
+
+Style/Lambda:
+  EnforcedStyle: literal
+
+Style/ModuleFunction:
+  Enabled: false
+
+Style/SlicingWithRange:
+  Enabled: true
+
+Style/TrailingCommaInArguments:
+  Enabled: false
+
+Style/TrailingCommaInArrayLiteral:
+  Enabled: false
+
+Style/TrailingCommaInHashLiteral:
+  Enabled: false
+
+Layout/LineLength:
+  Enabled: false
+
+Metrics/BlockLength:
+  Enabled: false
+
+Metrics/ClassLength:
+  Max: 350
+
+Metrics/MethodLength:
+  Max: 15
+
+# Counting required keyword arguments against a parameter-list limit pushes
+# you toward awkward param-object wrappers. We'd rather have explicit kwargs.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+# Action methods (revoke_token!, delete_connection, etc.) that return `true`
+# as a "completed without raising" sentinel get false-positive flagged as
+# predicates. They are not — they follow the bang-suffix convention for
+# methods that mutate or perform side effects.
+Naming/PredicateMethod:
+  Enabled: false
+
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent

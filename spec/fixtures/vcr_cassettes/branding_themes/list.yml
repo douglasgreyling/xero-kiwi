@@ -1,0 +1,59 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/BrandingThemes
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '413'
+      Xero-Correlation-Id:
+      - c9b219fb-901a-4cc3-8217-2a1a49d07a43
+      X-Appminlimit-Remaining:
+      - '9999'
+      X-Minlimit-Remaining:
+      - '59'
+      X-Daylimit-Remaining:
+      - '4944'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 13:30:04 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 13:30:04 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"c9b219fb-901a-4cc3-8217-2a1a49d07a43","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775827804410)/","BrandingThemes":[{"BrandingThemeID":"a3a6759a-f9f0-4434-9304-3dc88f9b71a5","Name":"Sanitised
+        Organisation","LogoUrl":"","Type":"INVOICE","SortOrder":0,"CreatedDateUTC":"/Date(1621160561653+0000)/"}]}'
+  recorded_at: Fri, 10 Apr 2026 13:30:04 GMT
+recorded_with: VCR 6.4.0

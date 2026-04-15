@@ -1,0 +1,63 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/Organisation
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '1461'
+      Xero-Correlation-Id:
+      - 16f6069c-23e6-4d92-ac61-a99bfc3426be
+      X-Appminlimit-Remaining:
+      - '9999'
+      X-Minlimit-Remaining:
+      - '59'
+      X-Daylimit-Remaining:
+      - '4965'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 12:35:41 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 12:35:41 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"16f6069c-23e6-4d92-ac61-a99bfc3426be","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775824541091)/","Organisations":[{"APIKey":"0BZKIHZUVMMICYUUQEHZAKOHOLJBSP","Name":"Sanitised
+        Organisation","LegalName":"Sanitised Organisation Limited","PaysTax":true,"Version":"GLOBAL","OrganisationType":"COMPANY","BaseCurrency":"ZAR","CountryCode":"ZA","IsDemoCompany":false,"OrganisationStatus":"ACTIVE","TaxNumber":"000-000-000","FinancialYearEndDay":31,"FinancialYearEndMonth":12,"DefaultSalesTax":"Tax
+        Exclusive","DefaultPurchasesTax":"Tax Exclusive","CreatedDateUTC":"/Date(1574275974000)/","OrganisationEntityType":"COMPANY","Timezone":"SOUTHAFRICASTANDARDTIME","ShortCode":"!GG4!Y","OrganisationID":"33333333-3333-3333-3333-000000000001","Edition":"BUSINESS","Class":"STARTER","LineOfBusiness":"Haxoring","Addresses":[{"AddressType":"POBOX","AddressLine1":"PO
+        Box 332","City":"Steynville","Region":"Gauteng","PostalCode":"29611","Country":"South
+        Africa","AttentionTo":""}],"Phones":[],"ExternalLinks":[],"PaymentTerms":{},"TaxNumberName":"VAT
+        Number"}]}'
+  recorded_at: Fri, 10 Apr 2026 12:35:41 GMT
+recorded_with: VCR 6.4.0

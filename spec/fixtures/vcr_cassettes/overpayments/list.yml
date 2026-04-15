@@ -1,0 +1,74 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/Overpayments
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '15753'
+      Xero-Correlation-Id:
+      - 1b0fb7f0-ec83-4b72-a9ba-c87aed9b52bd
+      X-Appminlimit-Remaining:
+      - '9999'
+      X-Minlimit-Remaining:
+      - '59'
+      X-Daylimit-Remaining:
+      - '4922'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 14:12:34 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 14:12:34 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"1b0fb7f0-ec83-4b72-a9ba-c87aed9b52bd","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775830354568)/","Overpayments":[{"OverpaymentID":"32895345-f7c0-4391-bfc9-75f7f52a4d2f","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":1109.0,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"850803eb-b231-42a8-a916-e4a39d7cd2c3","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-01-01T00:00:00","Date":"/Date(1546300800000+0000)/","Status":"VOIDED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":1109.0,"TotalTax":0.0,"Total":1109.0,"UpdatedDateUTC":"/Date(1574791660177+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"f71b4e20-8b8b-46f9-afef-065ff844f2b0","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":534.0,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"850803eb-b231-42a8-a916-e4a39d7cd2c3","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-01-01T00:00:00","Date":"/Date(1546300800000+0000)/","Status":"VOIDED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":534.0,"TotalTax":0.0,"Total":534.0,"UpdatedDateUTC":"/Date(1574791762870+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"f7ca9a36-38f8-497e-933b-2596ddc31bf7","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":534.0,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"76c93e5a-4f1d-4327-b8ee-80df11f6d9de","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-01-01T00:00:00","Date":"/Date(1546300800000+0000)/","Status":"VOIDED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":534.0,"TotalTax":0.0,"Total":534.0,"UpdatedDateUTC":"/Date(1574791888833+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"c678f3f6-4735-4fd1-8e50-4f10f2b26796","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":0.8,"Allocations":[{"AllocationID":"e775c681-1698-4226-a177-d9ece1a3350e","Amount":1366.2,"Date":"/Date(1574726400000+0000)/","Invoice":{"InvoiceID":"4bb1c187-e4e0-4c6b-a6e4-d8e5a9ff0aaa","InvoiceNumber":"INV-0028","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"06b007a7-7f85-47b0-a23b-de33a6d55055","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-06-01T00:00:00","Date":"/Date(1559347200000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":1367.0,"TotalTax":0.0,"Total":1367.0,"UpdatedDateUTC":"/Date(1574792286990+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"9483f9e9-74b2-4b32-9d0b-adb5655b06b2","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":501.87,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"75b1da7c-bce1-4610-9b6e-d2e1a61e41d4","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-08-01T00:00:00","Date":"/Date(1564617600000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":501.87,"TotalTax":0.0,"Total":501.87,"UpdatedDateUTC":"/Date(1576580328213+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"81523df4-dc62-4ba9-bc85-11c791ebc709","Type":"SPEND-OVERPAYMENT","Reference":"","RemainingCredit":452.2,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"75b1da7c-bce1-4610-9b6e-d2e1a61e41d4","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-08T00:00:00","Date":"/Date(1573171200000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":452.2,"TotalTax":0.0,"Total":452.2,"UpdatedDateUTC":"/Date(1576580461580+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"8786e4c7-bf12-4b5a-8a5d-c48d3b12cb17","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":0.0,"Allocations":[],"Payments":[{"PaymentID":"9db0806b-d472-4d50-92c4-8846275b2750","Date":"/Date(1570233600000+0000)/","Amount":1723.0,"Reference":"REFUND
+        FOR OVERPAYMENT","CurrencyRate":1.0,"HasAccount":false,"HasValidationErrors":false}],"HasAttachments":false,"Contact":{"ContactID":"06b007a7-7f85-47b0-a23b-de33a6d55055","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-09-01T00:00:00","Date":"/Date(1567296000000+0000)/","Status":"PAID","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":1723.0,"TotalTax":0.0,"Total":1723.0,"UpdatedDateUTC":"/Date(1626203043317+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"0c82c78e-d1b5-45c9-add4-4a54cf949486","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":3323.99,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"06b007a7-7f85-47b0-a23b-de33a6d55055","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-11T00:00:00","Date":"/Date(1573430400000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":3323.99,"TotalTax":0.0,"Total":3323.99,"UpdatedDateUTC":"/Date(1658251612250+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"0ce1ebd9-7e64-436d-9970-8825c51caf79","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":683.23,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"f60b5753-d674-4995-8b66-778e739ba827","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-03T00:00:00","Date":"/Date(1572739200000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":683.23,"TotalTax":0.0,"Total":683.23,"UpdatedDateUTC":"/Date(1685450596677+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"996b9e3b-8127-4513-98ce-c1a7e9b90771","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":1320.0,"Allocations":[{"AllocationID":"798212eb-2365-404e-9c93-43a95efa577a","Amount":1150.0,"Date":"/Date(1690243200000+0000)/","Invoice":{"InvoiceID":"1a40aa35-6c06-4278-9137-d0dd4066cf9b","InvoiceNumber":"INV-0066","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}},{"AllocationID":"4700a762-2704-4a1b-b50a-bc9c36ce3ecc","Amount":2530.0,"Date":"/Date(1690243200000+0000)/","Invoice":{"InvoiceID":"e2481b82-529b-4016-b49d-d712e1a6c7b9","InvoiceNumber":"INV-0065","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"2c867883-e680-4b91-84ec-e26b49b6fbbb","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2023-07-25T00:00:00","Date":"/Date(1690243200000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":5000.0,"TotalTax":0.0,"Total":5000.0,"UpdatedDateUTC":"/Date(1690299954917+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"d1769965-99e7-43ee-b18c-fe971e86cd9f","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":5304.56,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"d58dcd91-e399-40b8-b3c4-d82f3adac7a1","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-19T00:00:00","Date":"/Date(1574121600000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":5304.56,"TotalTax":0.0,"Total":5304.56,"UpdatedDateUTC":"/Date(1691241033620+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"ce861b7f-f952-4c2f-b4a6-165587df94c5","Type":"RECEIVE-OVERPAYMENT","Reference":"OVERPAYMENT
+        on Person A","RemainingCredit":2518.62,"Allocations":[{"AllocationID":"a58a30d8-34fb-4eeb-bffc-f78d265600f1","Amount":2827.85,"Date":"/Date(1574208000000+0000)/","Invoice":{"InvoiceID":"8a77d2c3-b454-401f-b9a9-f5aa5acc00ed","InvoiceNumber":"INV-0067","Payments":[],"CreditNotes":[],"Prepayments":[],"Overpayments":[],"IsDiscounted":false,"InvoiceAddresses":[],"HasErrors":false,"InvoicePaymentServices":[],"LineItems":[]}}],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"00a96cf1-ab5d-4fb6-87bc-5765e708575d","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-11-20T00:00:00","Date":"/Date(1574208000000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":5346.47,"TotalTax":0.0,"Total":5346.47,"UpdatedDateUTC":"/Date(1691241138013+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"384ab973-772d-41cb-972a-13b83c3efb44","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":7782.0,"Allocations":[],"Payments":[],"HasAttachments":false,"Contact":{"ContactID":"06b007a7-7f85-47b0-a23b-de33a6d55055","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-10-15T00:00:00","Date":"/Date(1571097600000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":7782.0,"TotalTax":0.0,"Total":7782.0,"UpdatedDateUTC":"/Date(1695231642530+0000)/","CurrencyCode":"ZAR"},{"OverpaymentID":"d725cbd2-b201-442b-bc89-f45d35dba2a0","Type":"RECEIVE-OVERPAYMENT","Reference":"","RemainingCredit":172.15,"Allocations":[],"Payments":[{"PaymentID":"80654503-035a-468e-b321-c918160bba8e","Date":"/Date(1573516800000+0000)/","Amount":361.85,"Reference":"REFUNDoLIO","CurrencyRate":1.0,"HasAccount":false,"HasValidationErrors":false}],"HasAttachments":false,"Contact":{"ContactID":"06b007a7-7f85-47b0-a23b-de33a6d55055","Name":"Sanitised
+        Organisation","Addresses":[],"Phones":[],"ContactGroups":[],"ContactPersons":[],"HasValidationErrors":false},"DateString":"2019-01-01T00:00:00","Date":"/Date(1546300800000+0000)/","Status":"AUTHORISED","LineAmountTypes":"NoTax","LineItems":[],"SubTotal":534.0,"TotalTax":0.0,"Total":534.0,"UpdatedDateUTC":"/Date(1752518957340+0000)/","CurrencyCode":"ZAR"}]}'
+  recorded_at: Fri, 10 Apr 2026 14:12:34 GMT
+recorded_with: VCR 6.4.0

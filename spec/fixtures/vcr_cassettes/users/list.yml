@@ -1,0 +1,60 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/Users
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '3154'
+      Xero-Correlation-Id:
+      - '0973bad2-8ee9-4406-a6bb-2df559f60991'
+      X-Appminlimit-Remaining:
+      - '9979'
+      X-Minlimit-Remaining:
+      - '50'
+      X-Daylimit-Remaining:
+      - '4947'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 13:16:38 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 13:16:38 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"0973bad2-8ee9-4406-a6bb-2df559f60991","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775826996311)/","Users":[{"GlobalUserID":"48345799-f95d-40af-9a0d-5847bfad7f8d","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Kelvin","LastName":"S","UpdatedDateUTC":"/Date(1775825621377+0000)/","IsSubscriber":true,"OrganisationRole":"STANDARD"},{"GlobalUserID":"32cf472c-bce9-4def-afe3-897ec3575064","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Statey","LastName":"Test
+        User","UpdatedDateUTC":"/Date(1651588481537+0000)/","IsSubscriber":false,"OrganisationRole":"STANDARD"},{"GlobalUserID":"43c521e3-55fe-44a2-9264-a2442abb189a","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Gary","LastName":"Greyling","UpdatedDateUTC":"/Date(1775825452810+0000)/","IsSubscriber":false,"OrganisationRole":"FINANCIALADVISER"},{"GlobalUserID":"e980d9ca-bf69-4f70-8e14-a478eadb3f3e","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Statey","LastName":"Support","UpdatedDateUTC":"/Date(1589630397480+0000)/","IsSubscriber":false,"OrganisationRole":"FINANCIALADVISER"},{"GlobalUserID":"3b61e834-a972-43e8-ab9c-b9f3667677c2","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Douglas","LastName":"Greyling","UpdatedDateUTC":"/Date(1775823608230+0000)/","IsSubscriber":false,"OrganisationRole":"FINANCIALADVISER"},{"GlobalUserID":"ab2d69ff-032a-4185-a472-c03fbdb40e08","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Gary","LastName":"SV","UpdatedDateUTC":"/Date(1743236152633+0000)/","IsSubscriber":false,"OrganisationRole":"STANDARD"},{"GlobalUserID":"36b8d68d-70d0-49be-a79b-ed149361f6cc","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Read","LastName":"Only","UpdatedDateUTC":"/Date(1679290144223+0000)/","IsSubscriber":false,"OrganisationRole":"READONLY"},{"GlobalUserID":"56a25b34-3f69-4913-afe2-f2bd6279d45e","UserID":"44444444-4444-4444-4444-000000000001","EmailAddress":"sanitised@example.com","FirstName":"Kelvin","LastName":"Snijman
+        (Read Only)","UpdatedDateUTC":"/Date(1696416456053+0000)/","IsSubscriber":false,"OrganisationRole":"READONLY"}]}'
+  recorded_at: Fri, 10 Apr 2026 13:16:37 GMT
+recorded_with: VCR 6.4.0

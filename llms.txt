@@ -1,0 +1,56 @@
+# XeroKiwi
+
+> A Ruby wrapper for the Xero Accounting API. Handles OAuth2, token refresh,
+> rate limiting, retries, and error mapping so the rest of your code can
+> focus on the business problem.
+
+XeroKiwi is built around four objects:
+
+- `XeroKiwi::OAuth` drives the OAuth2 authorization-code flow (build authorise URLs, exchange codes for tokens, verify ID tokens, revoke tokens).
+- `XeroKiwi::Token` is the immutable value object holding the access/refresh pair plus expiry metadata, with helpers like `expired?`, `expiring_soon?`, and `refreshable?`.
+- `XeroKiwi::Client` is the API gateway. Give it a token (or full credentials) and call resource methods like `client.connections`. Handles automatic token refresh (proactive + reactive), rate-limit retries, and error mapping.
+- `XeroKiwi::Connection` is a Xero "connection" — one tenant (organisation or practice) that an access token is authorised against.
+- `XeroKiwi::Accounting::Contact` is a Xero contact — a customer, supplier, or both, with nested `Address`, `Phone`, `ContactPerson`, and `PaymentTerms` value objects.
+- `XeroKiwi::Accounting::ContactGroup` is a Xero contact group — a named collection of contacts for organising customers or suppliers.
+- `XeroKiwi::Accounting::Organisation` is a Xero organisation — the accounting entity behind a tenant, with nested `Address`, `Phone`, `ExternalLink`, and `PaymentTerms` value objects.
+- `XeroKiwi::Accounting::User` is a Xero user — someone who has access to a Xero organisation, with their role and subscriber status.
+- `XeroKiwi::Accounting::CreditNote` is a Xero credit note — a document that reduces the amount owed on an invoice, with allocations and line items.
+- `XeroKiwi::Accounting::Allocation` is a Xero allocation — links a credit note, prepayment, or overpayment to an invoice, with an `invoice` reference.
+- `XeroKiwi::Accounting::Invoice` is a Xero invoice — a sales invoice (ACCREC) or purchase bill (ACCPAY), with line items, payments, and allocation details.
+- `XeroKiwi::Accounting::Payment` is a Xero payment — money received or paid against invoices, credit notes, prepayments, or overpayments.
+- `XeroKiwi::Accounting::Overpayment` is a Xero overpayment — an excess payment received or made, with allocations and line items.
+- `XeroKiwi::Accounting::Prepayment` is a Xero prepayment — a payment received or made in advance, with nested `LineItem` objects.
+- `XeroKiwi::Accounting::BrandingTheme` is a Xero branding theme — controls the look and feel of invoices and other documents.
+
+The flow is always: **OAuth → Token → Client → resources.** OAuth gets you a Token, you hand the Token to a Client, the Client lets you call resource methods.
+
+XeroKiwi requires Ruby 3.4.1 or newer. Install with `gem "xero-kiwi"`.
+
+## Docs
+
+- [Getting started](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/getting-started.md): installation, the mental model, and a full end-to-end example from authorise to first API call
+- [Client](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/client.md): every constructor option for `XeroKiwi::Client`, the request lifecycle (proactive + reactive token refresh), custom adapters, retry policy customisation, thread safety
+- [OAuth](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/oauth.md): the full auth-code flow, PKCE, state generation and verification, ID token verification with JWKS caching, token revocation, full Rails-style example
+- [Tokens](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/tokens.md): the `XeroKiwi::Token` value object, expiry helpers, automatic and manual refresh, the `on_token_refresh` callback, the refresh-token rotation gotcha, multi-process refresh patterns, token revocation
+- [Connections](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/connections.md): listing tenants, the `XeroKiwi::Connection` resource (id vs tenant_id), disconnecting tenants, common patterns
+- [Contacts](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/contact.md): listing and fetching contacts, the `XeroKiwi::Accounting::Contact` resource, nested ContactPerson, predicates
+- [Contact Groups](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/contact-group.md): listing and fetching contact groups, the `XeroKiwi::Accounting::ContactGroup` resource
+- [Organisation](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/organisation.md): fetching an organisation, the `XeroKiwi::Accounting::Organisation` resource, date parsing nuances (ISO 8601 vs .NET JSON format)
+- [Users](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/user.md): listing and fetching users, the `XeroKiwi::Accounting::User` resource, organisation roles
+- [Credit Notes](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/credit-note.md): listing and fetching credit notes, the `XeroKiwi::Accounting::CreditNote` resource, allocations
+- [Invoices](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/invoice.md): listing and fetching invoices/bills, the `XeroKiwi::Accounting::Invoice` resource, line items, payments
+- [Payments](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/payment.md): listing and fetching payments, the `XeroKiwi::Accounting::Payment` resource, reconciliation
+- [Overpayments](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/overpayment.md): listing and fetching overpayments, the `XeroKiwi::Accounting::Overpayment` resource, allocations
+- [Prepayments](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/prepayment.md): listing and fetching prepayments, the `XeroKiwi::Accounting::Prepayment` resource, LineItem value object
+- [Branding Themes](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/branding-theme.md): listing and fetching branding themes, the `XeroKiwi::Accounting::BrandingTheme` resource
+- [Address](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/address.md): the `XeroKiwi::Accounting::Address` value object (shared by Organisation, Contact)
+- [Phone](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/phone.md): the `XeroKiwi::Accounting::Phone` value object (shared by Organisation, Contact)
+- [ExternalLink](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/external-link.md): the `XeroKiwi::Accounting::ExternalLink` value object
+- [PaymentTerms](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/accounting/payment-terms.md): the `XeroKiwi::Accounting::PaymentTerms` and `XeroKiwi::Accounting::PaymentTerm` value objects
+- [Errors](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/errors.md): the full error hierarchy (`XeroKiwi::Error`, `APIError`, `AuthenticationError`, `TokenRefreshError`, `RateLimitError`, `OAuth::StateMismatchError`, `OAuth::CodeExchangeError`, `OAuth::IDTokenError`), what to catch when, common rescue patterns
+
+## Optional
+
+- [Retries and rate limits](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/retries-and-rate-limits.md): how XeroKiwi handles 429s and transient 5xxs, tuning the retry policy, customising backoff, the Faraday middleware ordering, why 500 is deliberately not retried
+- [README](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/README.md): high-level overview, installation, and the documentation table of contents
+- [CHANGELOG](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/CHANGELOG.md): version history

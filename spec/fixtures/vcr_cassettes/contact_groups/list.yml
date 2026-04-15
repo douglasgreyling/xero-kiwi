@@ -1,0 +1,65 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.xero.com/api.xro/2.0/ContactGroups
+    body:
+      encoding: US-ASCII
+      string: ''
+    headers:
+      Authorization:
+      - Bearer <XERO_ACCESS_TOKEN>
+      Accept:
+      - application/json
+      User-Agent:
+      - XeroKiwi/0.1.0 (+https://github.com/douglasgreyling/xero-kiwi)
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Accept-Encoding:
+      - gzip;q=1.0,deflate;q=0.6,identity;q=0.3
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+      Content-Length:
+      - '1586'
+      Xero-Correlation-Id:
+      - e4cf99b5-ae0e-4843-a786-d051564b4e38
+      X-Appminlimit-Remaining:
+      - '9982'
+      X-Minlimit-Remaining:
+      - '43'
+      X-Daylimit-Remaining:
+      - '4926'
+      Xero-Tenant-Id:
+      - "<XERO_TENANT_ID>"
+      Server:
+      - tpzgw-c
+      Expires:
+      - Fri, 10 Apr 2026 13:53:37 GMT
+      Cache-Control:
+      - max-age=0, no-cache, no-store
+      Pragma:
+      - no-cache
+      Date:
+      - Fri, 10 Apr 2026 13:53:37 GMT
+      Connection:
+      - keep-alive
+      X-Client-Tls-Ver:
+      - tls1.3
+    body:
+      encoding: UTF-8
+      string: '{"Id":"e4cf99b5-ae0e-4843-a786-d051564b4e38","Status":"OK","ProviderName":"Statey
+        Test","DateTimeUTC":"/Date(1775829216972)/","ContactGroups":[{"ContactGroupID":"5088da5d-109e-4489-9434-7c5dc0104691","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"9f8aef44-fce8-4ef6-a538-607e0bd9fdec","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"c16639ec-1e5e-4eb0-a854-f0a07c9c26cf","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"92e3cc4c-b81e-4a2e-8b2d-546e71c00823","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"f1f7ca47-76cd-4f12-a894-54148259c8ea","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"adf47d02-cfe9-4470-bfd5-5059d1bf7a97","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false},{"ContactGroupID":"77e4ccda-834d-4346-ada9-dc7eb56afd71","Name":"Sanitised
+        Organisation","Status":"ACTIVE","Contacts":[],"HasValidationErrors":false}]}'
+  recorded_at: Fri, 10 Apr 2026 13:53:36 GMT
+recorded_with: VCR 6.4.0

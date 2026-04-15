@@ -3,7 +3,7 @@
 `XeroKiwi::Client` is the entry point for talking to Xero's accounting API. You
 construct one with credentials and call resource methods on it. The client
 holds the OAuth token state, knows how to refresh it, and translates HTTP
-errors into XeroKiwi exceptions.
+errors into Xero Kiwi exceptions.
 
 ## Constructing a client
 
@@ -97,7 +97,7 @@ skipped: a 401 raises immediately and you handle it in your own code.
 
 ## Custom adapters
 
-XeroKiwi uses Faraday under the hood, so you can swap the HTTP adapter for
+Xero Kiwi uses Faraday under the hood, so you can swap the HTTP adapter for
 testing or for connection pooling:
 
 ```ruby
@@ -123,7 +123,7 @@ test adapter swallows refresh requests too.
 
 ## Customising the retry policy
 
-`retry_options:` is merged into XeroKiwi's defaults, so you only need to specify
+`retry_options:` is merged into Xero Kiwi's defaults, so you only need to specify
 overrides:
 
 ```ruby

@@ -58,7 +58,7 @@ sets.
 ## Date parsing
 
 The `created_date_utc` field uses Xero's .NET JSON timestamp format
-(`/Date(946684800000+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+(`/Date(946684800000+0000)/`). Xero Kiwi parses both .NET JSON and ISO 8601
 formats transparently — the attribute is always a UTC `Time` object.
 
 ## Error behaviour

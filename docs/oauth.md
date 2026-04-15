@@ -198,7 +198,7 @@ token = oauth.exchange_code(
 
 If you pass a `pkce:` to `authorization_url` but **forget** the
 `code_verifier:` on `exchange_code`, Xero will reject the exchange with
-`invalid_grant` and XeroKiwi will raise `XeroKiwi::OAuth::CodeExchangeError`.
+`invalid_grant` and Xero Kiwi will raise `XeroKiwi::OAuth::CodeExchangeError`.
 
 ## Step 2: handling the callback
 
@@ -489,7 +489,7 @@ end
 
 ## Things OAuth deliberately does NOT do
 
-- **No session storage.** XeroKiwi gives you `generate_state` and
+- **No session storage.** Xero Kiwi gives you `generate_state` and
   `generate_pkce` as helpers but never touches your session/cookies/Redis.
   Where you stash the values is your problem — and that's a feature,
   because every framework is different.

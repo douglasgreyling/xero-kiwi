@@ -1,6 +1,6 @@
 # Errors
 
-Every failure path in XeroKiwi raises a typed exception. This page walks through
+Every failure path in Xero Kiwi raises a typed exception. This page walks through
 the hierarchy, explains what each class means, and tells you what to catch
 in common situations.
 
@@ -8,7 +8,7 @@ in common situations.
 
 ```
 StandardError
-└─ XeroKiwi::Error                       (root — catch this for "anything XeroKiwi raised")
+└─ XeroKiwi::Error                       (root — catch this for "anything Xero Kiwi raised")
    ├─ XeroKiwi::APIError                 (root for HTTP responses; carries status + body)
    │  ├─ XeroKiwi::AuthenticationError   (401)
    │  │  ├─ XeroKiwi::TokenRefreshError  (refresh round-trip failed)
@@ -22,7 +22,7 @@ StandardError
 
 A few things worth noticing about the shape:
 
-- **Everything XeroKiwi raises** descends from `XeroKiwi::Error`. If you only want
+- **Everything Xero Kiwi raises** descends from `XeroKiwi::Error`. If you only want
   one rescue clause for "the Xero integration broke," catch this.
 - **HTTP responses** descend from `XeroKiwi::APIError`, which carries `status`
   and `body` attributes you can inspect.
@@ -38,7 +38,7 @@ A few things worth noticing about the shape:
 ### `XeroKiwi::Error`
 
 The root class. Inherits from `StandardError`. You almost never raise this
-directly — it exists as a catch-all for code that wants to rescue "any XeroKiwi
+directly — it exists as a catch-all for code that wants to rescue "any Xero Kiwi
 problem" without enumerating every subclass.
 
 ### `XeroKiwi::APIError`
@@ -62,7 +62,7 @@ The access token was rejected. The most common causes:
 - Token has the wrong scopes for this endpoint.
 - The wrong tenant ID was passed in the `Xero-Tenant-Id` header.
 
-If your client has refresh capability, XeroKiwi will already have tried to
+If your client has refresh capability, Xero Kiwi will already have tried to
 refresh and retry exactly once before this raises. Seeing `AuthenticationError`
 on a refresh-capable client means **the second 401 also failed** — refresh
 won't fix it, and you need to either re-authorise or surface the error.
@@ -115,9 +115,9 @@ Inspect `error.body` to surface it.
 
 ### `XeroKiwi::ServerError` (HTTP 5xx)
 
-A 5xx response that wasn't retried. XeroKiwi retries 502/503/504 automatically
+A 5xx response that wasn't retried. Xero Kiwi retries 502/503/504 automatically
 (see [retries and rate limits](retries-and-rate-limits.md)) so by the time
-you see this, the retries are exhausted or the status was 500 (which XeroKiwi
+you see this, the retries are exhausted or the status was 500 (which Xero Kiwi
 deliberately doesn't retry, since 500s are usually persistent bugs in the
 request rather than transient infrastructure issues).
 
@@ -164,7 +164,7 @@ The error message has a brief description of which check failed (e.g.
 
 ## What to catch when
 
-### "Any XeroKiwi failure"
+### "Any Xero Kiwi failure"
 
 ```ruby
 begin
@@ -256,12 +256,12 @@ Order matters — `TokenRefreshError` is more specific than
 
 ## Things the error system deliberately does NOT do
 
-- **No "this error is retryable" predicate.** XeroKiwi already retries the
+- **No "this error is retryable" predicate.** Xero Kiwi already retries the
   cases that *should* be retried at the HTTP level. By the time an exception
   reaches your code, the retries are exhausted and the situation is
   application-level. Adding `error.retryable?` would create a tempting
   foot-gun where callers retry inside their own code, doubling up on the
-  retries XeroKiwi is already doing.
+  retries Xero Kiwi is already doing.
 - **No automatic Sentry / Bugsnag integration.** Errors raise normally;
   configure your own observability layer to catch them at the boundary.
 - **No `error.code` enum.** The HTTP `status` is the enum. Inspecting it

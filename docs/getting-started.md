@@ -16,7 +16,7 @@ Before you can talk to Xero from Ruby, you need:
 
 ## Installing the gem
 
-Add XeroKiwi to your `Gemfile`:
+Add Xero Kiwi to your `Gemfile`:
 
 ```ruby
 gem "xero-kiwi"
@@ -30,7 +30,7 @@ bundle install
 
 ## The mental model
 
-XeroKiwi is built around a small set of objects, each with one job:
+Xero Kiwi is built around a small set of objects, each with one job:
 
 | Object | What it does |
 |--------|--------------|

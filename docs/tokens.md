@@ -1,6 +1,6 @@
 # Tokens
 
-This doc covers everything about token *state* in XeroKiwi: the `XeroKiwi::Token`
+This doc covers everything about token *state* in Xero Kiwi: the `XeroKiwi::Token`
 value object, how the client refreshes tokens automatically, the persistence
 callback, manual refresh, revocation, and the gotchas around token rotation.
 
@@ -77,7 +77,7 @@ The `now:` keyword arg lets you inject a fixed time for testing.
 ### Why `expired?` returns false on nil `expires_at`
 
 If you don't know when the token expires (e.g. you loaded a credential from
-storage that was created before you tracked expiry), XeroKiwi treats it as
+storage that was created before you tracked expiry), Xero Kiwi treats it as
 "unknown" and assumes valid. The fallback is reactive — your first 401 will
 trigger a refresh.
 
@@ -163,7 +163,7 @@ token and fail.
 ### Persistence patterns
 
 Different applications store credentials differently. The callback works the
-same in all of them — XeroKiwi just hands you the new token and trusts you to
+same in all of them — Xero Kiwi just hands you the new token and trusts you to
 put it somewhere:
 
 ```ruby
@@ -200,7 +200,7 @@ integrations:
 > and gets `invalid_grant`. From Worker B's perspective, the credential
 > looks dead — but it's not, A just rotated it.
 
-XeroKiwi mitigates this in two ways:
+Xero Kiwi mitigates this in two ways:
 
 1. **Single-process safety.** A `Mutex` around refresh, with a double-check
    inside, prevents multiple threads in the *same process* from racing.
@@ -253,7 +253,7 @@ Use Redis (or Postgres advisory locks, etc.) to take a distributed lock
 keyed by credential ID before refreshing. Slower but more robust than
 Option B.
 
-XeroKiwi doesn't ship any of these — they're application-level decisions that
+Xero Kiwi doesn't ship any of these — they're application-level decisions that
 depend on your infrastructure. But the existence of `client.token.refreshable?`
 and the explicit `XeroKiwi::TokenRefreshError` give you the building blocks.
 
@@ -279,7 +279,7 @@ This:
 
 After revocation, **treat the client as dead.** Subsequent API calls will
 401, and reactive refresh will fail because the refresh token is gone too.
-XeroKiwi doesn't set an internal flag on the client — there's no
+Xero Kiwi doesn't set an internal flag on the client — there's no
 `client.revoked?` predicate — because the right thing for a caller to do
 post-revocation is throw the client away, not keep using it.
 
@@ -307,7 +307,7 @@ Xero accepts both. **But** revoking the access token only kills that one
 access token — the refresh token stays alive and can mint a new one
 immediately. Revoking the refresh token invalidates the entire chain.
 
-XeroKiwi enforces the refresh-token path: `Client#revoke_token!` raises if you
+Xero Kiwi enforces the refresh-token path: `Client#revoke_token!` raises if you
 don't have a refresh token, rather than silently revoking the access token
 (which would do almost nothing useful). This avoids a foot-gun where users
 think they've logged out but the token is still happily working.
@@ -334,6 +334,6 @@ log the full hash.
   full hash, which works for "is this the same token?" but isn't a security
   check. Don't use it for authentication.
 - **No JWT decoding of the access token.** Xero's access tokens are JWTs,
-  but XeroKiwi doesn't peek at their contents. The `id_token` is the OIDC
+  but Xero Kiwi doesn't peek at their contents. The `id_token` is the OIDC
   identity assertion you should care about; see [OAuth](oauth.md#id-token-verification)
   for verifying it.

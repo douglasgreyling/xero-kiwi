@@ -74,7 +74,7 @@ Two users are `==` if they share the same `user_id`. `#hash` is consistent with
 ## Date parsing
 
 The `updated_date_utc` field uses Xero's .NET JSON timestamp format
-(`/Date(1516230549137+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+(`/Date(1516230549137+0000)/`). Xero Kiwi parses both .NET JSON and ISO 8601
 formats transparently — the attribute is always a UTC `Time` object.
 
 ## Error behaviour

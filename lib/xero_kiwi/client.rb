@@ -62,7 +62,8 @@ module XeroKiwi
       on_token_refresh: nil,
       adapter: nil,
       user_agent: DEFAULT_USER_AGENT,
-      retry_options: {}
+      retry_options: {},
+      throttle: nil
     )
       @token            = Token.new(
         access_token:  access_token,
@@ -75,6 +76,7 @@ module XeroKiwi
       @adapter          = adapter
       @user_agent       = user_agent
       @retry_options    = DEFAULT_RETRY_OPTIONS.merge(retry_options)
+      @throttle         = throttle || Throttle::NullLimiter.new
       @refresh_mutex    = Mutex.new
     end
 
@@ -522,8 +524,10 @@ module XeroKiwi
     #      a XeroKiwi exception, *after* retries have been exhausted.
     #   2. Retry — retries on 429/503 (respecting Retry-After) and on transport
     #      exceptions.
-    #   3. JSON — parses the response body so handlers downstream get a Hash.
-    #   4. Adapter — actually makes the HTTP call.
+    #   3. Throttle — blocks before each attempt until a per-tenant token is
+    #      available. Below Retry so every retry also consumes a token.
+    #   4. JSON — parses the response body so handlers downstream get a Hash.
+    #   5. Adapter — actually makes the HTTP call.
     #
     # Putting ResponseHandler outside Retry is the key trick: it means a 429
     # gets retried by Faraday before we ever raise RateLimitError, and the
@@ -532,6 +536,7 @@ module XeroKiwi
       Faraday.new(url: BASE_URL) do |f|
         f.use ResponseHandler
         f.request :retry, @retry_options
+        f.use Throttle::Middleware, @throttle
         f.response :json, content_type: /\bjson/
         f.adapter(@adapter || Faraday.default_adapter)
 

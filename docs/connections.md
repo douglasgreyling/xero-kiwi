@@ -74,7 +74,7 @@ old_connections - new_connections # diff by id
 
 Xero serialises dates in C# DateTime format and frequently omits the timezone
 marker on values that are documented as UTC (e.g. `"2019-07-09T23:40:30.1833130"`).
-XeroKiwi force-appends a `Z` before parsing so you always get a UTC `Time` back —
+Xero Kiwi force-appends a `Z` before parsing so you always get a UTC `Time` back —
 without this, `Time.parse` would silently fall back to local time and you'd
 get the wrong instant.
 

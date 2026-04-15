@@ -1,6 +1,6 @@
 # Retries and rate limits
 
-This doc explains how XeroKiwi handles transient failures: rate limiting, server
+This doc explains how Xero Kiwi handles transient failures: rate limiting, server
 errors, and network blips. Most of the time you don't need to know any of
 this — the defaults are sensible. Read on if you need to tune the retry
 policy or you want to understand what's happening when a request mysteriously
@@ -20,9 +20,9 @@ Xero enforces three separate rate limits, all returned with HTTP 429:
 Plus a `Retry-After` header on every 429 telling you how many seconds to
 wait before trying again.
 
-## What XeroKiwi does automatically
+## What Xero Kiwi does automatically
 
-XeroKiwi sets up a `faraday-retry` middleware that handles transient failures
+Xero Kiwi sets up a `faraday-retry` middleware that handles transient failures
 without any code from you. The default retry policy:
 
 | Setting | Default | Why |
@@ -38,13 +38,13 @@ without any code from you. The default retry policy:
 ### Retry-After is honoured
 
 `faraday-retry` automatically respects the `Retry-After` header on 429
-responses. So if Xero says "wait 30 seconds," XeroKiwi waits 30 seconds before
+responses. So if Xero says "wait 30 seconds," Xero Kiwi waits 30 seconds before
 retrying — not the exponential backoff schedule. This is the whole reason
 to use a real retry middleware instead of rolling your own.
 
 ### Which 5xx are retried
 
-XeroKiwi retries `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway
+Xero Kiwi retries `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway
 Timeout`. These are the canonical "the upstream is having a temporary
 problem" statuses.
 
@@ -66,7 +66,7 @@ The retried request count includes the original attempt, so `max: 4` means
 
 ## Customising the retry policy
 
-Pass `retry_options:` to `XeroKiwi::Client.new`. The hash is merged into XeroKiwi's
+Pass `retry_options:` to `XeroKiwi::Client.new`. The hash is merged into Xero Kiwi's
 defaults, so you only specify what you want to change:
 
 ```ruby
@@ -109,7 +109,7 @@ retry_options: {
 }
 ```
 
-This is what XeroKiwi's own test suite uses to keep specs deterministic and
+This is what Xero Kiwi's own test suite uses to keep specs deterministic and
 fast.
 
 **Adding 500 to the retry list** (against my advice, but sometimes you
@@ -123,7 +123,7 @@ retry_options: {
 
 ### One thing you must NOT remove
 
-XeroKiwi's default `exceptions:` list includes `Faraday::RetriableResponse`,
+Xero Kiwi's default `exceptions:` list includes `Faraday::RetriableResponse`,
 which is the *internal* signal `faraday-retry` uses to flag a status-code
 retry. **It must stay in the list**, or the retry middleware can't catch
 its own retry signal and 429s/503s will never be retried — they'll bubble
@@ -169,7 +169,7 @@ needs to know about `RateLimitError` to know to retry it. That's brittle.
 By putting Retry on the inside, the retry middleware sees raw HTTP envs
 with status 429 and uses its own `retry_statuses` config to decide what to
 do. ResponseHandler only sees the *final* env (after retries are done) and
-maps it to a XeroKiwi exception.
+maps it to a Xero Kiwi exception.
 
 You don't need to think about any of this — it's the gem's job — but if
 you ever subclass the client or insert your own middleware, this is the
@@ -202,7 +202,7 @@ retry/backoff schedules — they won't coordinate.
 
 If you need cross-thread coordination (e.g. "all threads should pause when
 any one of them hits a 429"), build it at the application level using a
-shared semaphore or rate limiter. XeroKiwi doesn't ship one, because the right
+shared semaphore or rate limiter. Xero Kiwi doesn't ship one, because the right
 shape depends entirely on your traffic patterns.
 
 ## Things the retry layer deliberately does NOT do
@@ -212,13 +212,15 @@ shape depends entirely on your traffic patterns.
 - **No retry on 4xx (other than 429).** 4xx means the client did something
   wrong; retrying won't fix it. The exception is 429 (rate limit), which is
   classified as 4xx but is fundamentally a "wait and try again" signal.
-- **No global rate limiter.** XeroKiwi reacts to 429s as they happen but
-  doesn't proactively throttle — it'll happily fire 100 concurrent requests
-  and rely on Xero's 429s to slow things down. If you need proactive
-  throttling, do it at your job-queue level.
+- **No global rate limiter *by default*.** Xero Kiwi reacts to 429s as they
+  happen but doesn't proactively throttle unless you opt in. For multi-worker
+  setups where several processes hit the same tenant, wire up the
+  Redis-backed token bucket described in
+  [throttling.md](throttling.md) — it composes with this retry layer rather
+  than replacing it.
 - **No retry budget across calls.** Each `client.connections` (or any
   other call) gets a fresh `max` retries. There's no concept of "this client
   has had too many retries today and should stop trying."
 - **No automatic Sidekiq integration.** When `RateLimitError` raises, it's
-  up to your job to re-enqueue using the `retry_after` value. XeroKiwi exposes
+  up to your job to re-enqueue using the `retry_after` value. Xero Kiwi exposes
   it; what you do with it is your call.

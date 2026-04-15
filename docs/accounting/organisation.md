@@ -82,7 +82,7 @@ API. Connections use ISO 8601 strings (e.g. `"2019-07-09T23:40:30.1833130"`),
 but the Accounting API (including Organisation) uses the legacy .NET JSON
 format: `/Date(1574275974000)/`.
 
-XeroKiwi handles both transparently — all `Time` attributes are parsed to UTC
+Xero Kiwi handles both transparently — all `Time` attributes are parsed to UTC
 `Time` objects regardless of which format Xero sends. You don't need to think
 about this unless you're looking at raw cassette data or debugging timestamp
 issues.

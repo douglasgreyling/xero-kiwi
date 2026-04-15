@@ -44,8 +44,8 @@ LLMS_FULL_PATH = "llms-full.txt"
 # expected output.
 def build_llms_full
   out = +""
-  out << "# XeroKiwi — full documentation\n\n"
-  out << "This file is the complete documentation for the XeroKiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.\n\n"
+  out << "# Xero Kiwi — full documentation\n\n"
+  out << "This file is the complete documentation for the Xero Kiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.\n\n"
   out << "For the curated index version, see llms.txt in the same directory.\n\n"
   out << "Source: https://github.com/douglasgreyling/xero-kiwi\n\n"
   LLMS_SOURCE_FILES.each { |path| append_file_block(out, path) }

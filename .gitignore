@@ -11,3 +11,7 @@
 .rspec_status
 
 .env
+
+# Local Claude Code overrides and personal scratch
+.claude
+todo.md

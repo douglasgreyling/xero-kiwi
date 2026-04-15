@@ -1,6 +1,6 @@
 # Xero Kiwi
 
-A Ruby wrapper for the [Xero](https://www.xero.com) Accounting API. XeroKiwi handles
+A Ruby wrapper for the [Xero](https://www.xero.com) Accounting API. Xero Kiwi handles
 the unglamorous parts of integrating with Xero — OAuth2, token refresh, rate
 limiting, retries — so the rest of your code can focus on the actual business
 problem.
@@ -33,7 +33,7 @@ gem "xero-kiwi"
 
 Then run `bundle install`.
 
-XeroKiwi requires Ruby 3.4.1 or newer.
+Xero Kiwi requires Ruby 3.4.1 or newer.
 
 ## Quick start
 
@@ -70,13 +70,35 @@ below.
 | [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
 | [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
-| [Retries and rate limits](docs/retries-and-rate-limits.md) | How XeroKiwi handles 429s and transient failures, customising the retry policy |
+| [Retries and rate limits](docs/retries-and-rate-limits.md) | How Xero Kiwi handles 429s and transient failures, customising the retry policy |
+| [Throttling](docs/throttling.md) | Redis-backed token bucket for proactive rate-limit coordination across multiple workers |
 
 ## Status
 
-XeroKiwi is in early development. The API surface for the features documented above
+Xero Kiwi is in early development. The API surface for the features documented above
 is stable, but expect new resource methods to be added over time. Breaking
 changes will be called out in the [changelog](CHANGELOG.md).
+
+## Development
+
+The gem runs natively via Bundler — nothing is containerised for everyday
+development. A `docker-compose.yml` exists for *external services* the specs
+need, currently just Redis (used by the throttle limiter's Lua-backed specs).
+
+```sh
+bundle install
+docker compose up -d redis   # optional; only needed for :redis-tagged specs
+bundle exec rspec
+```
+
+Without Redis running, specs tagged `:redis` are filtered out automatically
+(see [spec/spec_helper.rb](spec/spec_helper.rb)) so the suite still passes.
+Override the test Redis URL with `TEST_REDIS_URL=...` if you don't want the
+default `redis://127.0.0.1:6379/15`.
+
+```sh
+docker compose down          # when you're done
+```
 
 ## Contributing
 

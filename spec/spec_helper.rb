@@ -87,4 +87,10 @@ RSpec.configure do |config|
   config.expect_with :rspec do |c|
     c.syntax = :expect
   end
+
+  # Specs tagged `:redis` need a reachable Redis (the throttle limiter's Lua
+  # script is server-side, so mock_redis can't cover it). When no Redis is
+  # reachable — e.g. in minimal CI — exclude them silently rather than
+  # marking every example as pending.
+  config.filter_run_excluding redis: true unless RedisSpecHelper.available?
 end

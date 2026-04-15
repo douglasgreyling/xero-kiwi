@@ -143,6 +143,62 @@ RSpec.describe XeroKiwi::Client do
     end
   end
 
+  describe "throttling" do
+    let(:tenant_id)             { "70784a63-d24b-46a9-a4db-0e70a274b056" }
+    let(:organisation_endpoint) { "https://api.xero.com/api.xro/2.0/Organisation" }
+    let(:limiter)               { instance_double(XeroKiwi::Throttle::NullLimiter, acquire: nil) }
+
+    let(:throttled_client) do
+      described_class.new(
+        access_token:  access_token,
+        throttle:      limiter,
+        retry_options: { interval: 0, interval_randomness: 0, backoff_factor: 1, max: 2 }
+      )
+    end
+
+    it "calls the limiter once per request using the tenant id" do
+      stub_request(:get, organisation_endpoint)
+        .to_return(status: 200, body: '{"Organisations":[]}', headers: json_headers)
+
+      throttled_client.organisation(tenant_id)
+
+      expect(limiter).to have_received(:acquire).with(tenant_id).once
+    end
+
+    it "does not call the limiter for untenanted requests (e.g. /connections)" do
+      stub_request(:get, connections_endpoint)
+        .to_return(status: 200, body: "[]", headers: json_headers)
+
+      throttled_client.connections
+
+      expect(limiter).not_to have_received(:acquire)
+    end
+
+    it "re-enters the limiter on retries (429 then success consumes two tokens)" do
+      stub_request(:get, organisation_endpoint)
+        .to_return(
+          { status: 429, headers: { "Retry-After" => "0", "Content-Type" => "application/json" }, body: "{}" },
+          { status: 200, body: '{"Organisations":[]}', headers: json_headers }
+        )
+
+      throttled_client.organisation(tenant_id)
+
+      expect(limiter).to have_received(:acquire).with(tenant_id).twice
+    end
+
+    it "propagates DailyLimitExhausted from the limiter without making a request" do
+      allow(limiter).to receive(:acquire).and_raise(
+        XeroKiwi::Throttle::DailyLimitExhausted.new(retry_after: 3600)
+      )
+      stub = stub_request(:get, organisation_endpoint)
+
+      expect { throttled_client.organisation(tenant_id) }
+        .to raise_error(XeroKiwi::Throttle::DailyLimitExhausted) { |e| expect(e.retry_after).to eq(3600) }
+
+      expect(stub).not_to have_been_requested
+    end
+  end
+
   describe "#organisation" do
     let(:tenant_id)              { ENV.fetch("XERO_TENANT_ID", "70784a63-d24b-46a9-a4db-0e70a274b056") }
     let(:organisation_endpoint)  { "https://api.xero.com/api.xro/2.0/Organisation" }

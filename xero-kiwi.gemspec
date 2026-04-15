@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.email   = ["greyling.douglas@gmail.com"]
 
   spec.summary                           = "A Ruby wrapper for the Xero Accounting API."
-  spec.description                       = "XeroKiwi handles the unglamorous parts of integrating with Xero — " \
+  spec.description                       = "Xero Kiwi handles the unglamorous parts of integrating with Xero — " \
                                            "OAuth2 with PKCE, automatic token refresh, rate-limit-aware retries, " \
                                            "and typed value objects for accounting resources — so your code can " \
                                            "focus on the business problem rather than the plumbing."

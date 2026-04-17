@@ -157,7 +157,7 @@ RSpec.describe XeroKiwi::Accounting::Organisation do
 
       expect(hash[:organisation_id]).to eq("b2c885a0-e8de-4867-8b68-1442f7e4e162")
       expect(hash[:name]).to eq("Maple Florists Ltd")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

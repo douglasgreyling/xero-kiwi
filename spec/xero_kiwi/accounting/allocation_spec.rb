@@ -47,7 +47,7 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
       hash       = allocation.to_h
 
       expect(hash[:allocation_id]).to eq("b12335f4-a1e5-4431-aeb4-488e5547558e")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

@@ -6,37 +6,12 @@ module XeroKiwi
     #
     # See: https://developer.xero.com/documentation/api/accounting/invoices
     class TrackingCategory
-      ATTRIBUTES = {
-        tracking_category_id: "TrackingCategoryID",
-        tracking_option_id:   "TrackingOptionID",
-        name:                 "Name",
-        option:               "Option"
-      }.freeze
+      include Resource
 
-      attr_reader(*ATTRIBUTES.keys)
-
-      def initialize(attrs)
-        attrs                 = attrs.transform_keys(&:to_s)
-        @tracking_category_id = attrs["TrackingCategoryID"]
-        @tracking_option_id   = attrs["TrackingOptionID"]
-        @name                 = attrs["Name"]
-        @option               = attrs["Option"]
-      end
-
-      def to_h
-        ATTRIBUTES.keys.to_h { |key| [key, public_send(key)] }
-      end
-
-      def ==(other)
-        other.is_a?(TrackingCategory) && to_h == other.to_h
-      end
-      alias eql? ==
-
-      def hash = to_h.hash
-
-      def inspect
-        "#<#{self.class} name=#{name.inspect} option=#{option.inspect}>"
-      end
+      attribute :tracking_category_id, xero: "TrackingCategoryID", type: :guid
+      attribute :tracking_option_id,   xero: "TrackingOptionID",   type: :guid
+      attribute :name,                 xero: "Name"
+      attribute :option,               xero: "Option"
     end
   end
 end

@@ -41,7 +41,7 @@ RSpec.describe XeroKiwi::Accounting::Phone do
     it "returns a hash keyed by ruby attribute names" do
       phone = described_class.new(full_attrs)
       expect(phone.to_h[:phone_type]).to eq("DEFAULT")
-      expect(phone.to_h.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(phone.to_h.keys).to match_array(described_class.attributes.keys)
     end
   end
 

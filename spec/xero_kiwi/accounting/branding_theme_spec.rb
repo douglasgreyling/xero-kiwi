@@ -89,7 +89,7 @@ RSpec.describe XeroKiwi::Accounting::BrandingTheme do
 
       expect(hash[:branding_theme_id]).to eq("dfe23d27-a3a6-4ef3-a5ca-b9e02b142dde")
       expect(hash[:name]).to eq("Special Projects")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

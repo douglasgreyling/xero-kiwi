@@ -83,7 +83,7 @@ RSpec.describe XeroKiwi::Accounting::LineItem do
 
       expect(hash[:description]).to eq("Onsite project management")
       expect(hash[:line_item_id]).to eq("52208ff9-528a-4985-a9ad-b2b1d4210e38")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

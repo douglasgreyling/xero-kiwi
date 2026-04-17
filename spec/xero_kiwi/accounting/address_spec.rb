@@ -54,7 +54,7 @@ RSpec.describe XeroKiwi::Accounting::Address do
       address = described_class.new(full_attrs)
       expect(address.to_h[:address_type]).to eq("STREET")
       expect(address.to_h[:city]).to eq("Auckland")
-      expect(address.to_h.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(address.to_h.keys).to match_array(described_class.attributes.keys)
     end
   end
 

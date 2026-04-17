@@ -145,7 +145,7 @@ RSpec.describe XeroKiwi::Accounting::CreditNote do
       hash = cn.to_h
 
       expect(hash[:credit_note_id]).to eq("aea95d78-ea48-456b-9b08-6bc012600072")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

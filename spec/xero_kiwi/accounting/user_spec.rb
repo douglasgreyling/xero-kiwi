@@ -96,7 +96,7 @@ RSpec.describe XeroKiwi::Accounting::User do
 
       expect(hash[:user_id]).to eq("7cf47fe2-c3dd-4c6b-9895-7ba767ba529c")
       expect(hash[:email_address]).to eq("john.smith@mail.com")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

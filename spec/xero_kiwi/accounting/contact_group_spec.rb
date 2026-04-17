@@ -96,7 +96,7 @@ RSpec.describe XeroKiwi::Accounting::ContactGroup do
 
       expect(hash[:contact_group_id]).to eq("97bbd0e6-ab4d-4117-9304-d90dd4779199")
       expect(hash[:name]).to eq("VIP Customers")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

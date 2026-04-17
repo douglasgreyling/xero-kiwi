@@ -7,7 +7,14 @@ module XeroKiwi
     #
     # See: https://developer.xero.com/documentation/api/accounting/types#paymentterms
     class PaymentTerms
-      attr_reader :bills, :sales
+      include Resource
+
+      # A nil or empty sub-hash should collapse to nil rather than constructing
+      # a PaymentTerm with every attribute nil.
+      TERM_HYDRATOR = ->(raw) { raw.nil? || raw.empty? ? nil : PaymentTerm.new(raw) }
+
+      attribute :bills, xero: "Bills", hydrate: TERM_HYDRATOR
+      attribute :sales, xero: "Sales", hydrate: TERM_HYDRATOR
 
       def self.from_hash(hash)
         return nil if hash.nil?
@@ -15,12 +22,8 @@ module XeroKiwi
         new(hash)
       end
 
-      def initialize(attrs)
-        attrs  = attrs.transform_keys(&:to_s)
-        @bills = PaymentTerm.from_hash(attrs["Bills"])
-        @sales = PaymentTerm.from_hash(attrs["Sales"])
-      end
-
+      # Override the mixin default: PaymentTerms's to_h unwraps the nested
+      # PaymentTerm objects to hashes, matching the pre-DSL behaviour.
       def to_h
         { bills: bills&.to_h, sales: sales&.to_h }
       end
@@ -39,27 +42,15 @@ module XeroKiwi
 
     # A single payment term (either bills or sales side).
     class PaymentTerm
-      ATTRIBUTES = {
-        day:  "Day",
-        type: "Type"
-      }.freeze
+      include Resource
 
-      attr_reader(*ATTRIBUTES.keys)
+      attribute :day,  xero: "Day"
+      attribute :type, xero: "Type"
 
       def self.from_hash(hash)
         return nil if hash.nil? || hash.empty?
 
         new(hash)
-      end
-
-      def initialize(attrs)
-        attrs = attrs.transform_keys(&:to_s)
-        @day  = attrs["Day"]
-        @type = attrs["Type"]
-      end
-
-      def to_h
-        ATTRIBUTES.keys.to_h { |key| [key, public_send(key)] }
       end
 
       def ==(other)

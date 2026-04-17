@@ -150,7 +150,7 @@ RSpec.describe XeroKiwi::Accounting::Payment do
       hash    = payment.to_h
 
       expect(hash[:payment_id]).to eq("b26fd49a-cbae-470a-a8f8-bcbc119e0379")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

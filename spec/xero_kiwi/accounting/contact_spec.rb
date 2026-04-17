@@ -224,7 +224,7 @@ RSpec.describe XeroKiwi::Accounting::Contact do
 
       expect(hash[:contact_id]).to eq("bd2270c3-8706-4c11-9cfb-000b551c3f51")
       expect(hash[:name]).to eq("ABC Limited")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

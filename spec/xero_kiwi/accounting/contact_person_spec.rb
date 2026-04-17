@@ -40,7 +40,7 @@ RSpec.describe XeroKiwi::Accounting::ContactPerson do
       hash   = person.to_h
 
       expect(hash[:first_name]).to eq("John")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

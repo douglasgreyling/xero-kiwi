@@ -184,7 +184,7 @@ RSpec.describe XeroKiwi::Accounting::Invoice do
       hash = inv.to_h
 
       expect(hash[:invoice_id]).to eq("243216c5-369e-4056-ac67-05388f86dc81")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

@@ -1,6 +1,6 @@
-# XeroKiwi — full documentation
+# Xero Kiwi — full documentation
 
-This file is the complete documentation for the XeroKiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.
+This file is the complete documentation for the Xero Kiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.
 
 For the curated index version, see llms.txt in the same directory.
 
@@ -13,7 +13,7 @@ FILE: README.md
 
 # Xero Kiwi
 
-A Ruby wrapper for the [Xero](https://www.xero.com) Accounting API. XeroKiwi handles
+A Ruby wrapper for the [Xero](https://www.xero.com) Accounting API. Xero Kiwi handles
 the unglamorous parts of integrating with Xero — OAuth2, token refresh, rate
 limiting, retries — so the rest of your code can focus on the actual business
 problem.
@@ -46,7 +46,7 @@ gem "xero-kiwi"
 
 Then run `bundle install`.
 
-XeroKiwi requires Ruby 3.4.1 or newer.
+Xero Kiwi requires Ruby 3.4.1 or newer.
 
 ## Quick start
 
@@ -83,13 +83,35 @@ below.
 | [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
 | [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
-| [Retries and rate limits](docs/retries-and-rate-limits.md) | How XeroKiwi handles 429s and transient failures, customising the retry policy |
+| [Retries and rate limits](docs/retries-and-rate-limits.md) | How Xero Kiwi handles 429s and transient failures, customising the retry policy |
+| [Throttling](docs/throttling.md) | Redis-backed token bucket for proactive rate-limit coordination across multiple workers |
 
 ## Status
 
-XeroKiwi is in early development. The API surface for the features documented above
+Xero Kiwi is in early development. The API surface for the features documented above
 is stable, but expect new resource methods to be added over time. Breaking
 changes will be called out in the [changelog](CHANGELOG.md).
+
+## Development
+
+The gem runs natively via Bundler — nothing is containerised for everyday
+development. A `docker-compose.yml` exists for *external services* the specs
+need, currently just Redis (used by the throttle limiter's Lua-backed specs).
+
+```sh
+bundle install
+docker compose up -d redis   # optional; only needed for :redis-tagged specs
+bundle exec rspec
+```
+
+Without Redis running, specs tagged `:redis` are filtered out automatically
+(see [spec/spec_helper.rb](spec/spec_helper.rb)) so the suite still passes.
+Override the test Redis URL with `TEST_REDIS_URL=...` if you don't want the
+default `redis://127.0.0.1:6379/15`.
+
+```sh
+docker compose down          # when you're done
+```
 
 ## Contributing
 
@@ -124,7 +146,7 @@ Before you can talk to Xero from Ruby, you need:
 
 ## Installing the gem
 
-Add XeroKiwi to your `Gemfile`:
+Add Xero Kiwi to your `Gemfile`:
 
 ```ruby
 gem "xero-kiwi"
@@ -138,7 +160,7 @@ bundle install
 
 ## The mental model
 
-XeroKiwi is built around a small set of objects, each with one job:
+Xero Kiwi is built around a small set of objects, each with one job:
 
 | Object | What it does |
 |--------|--------------|
@@ -255,7 +277,7 @@ FILE: docs/client.md
 `XeroKiwi::Client` is the entry point for talking to Xero's accounting API. You
 construct one with credentials and call resource methods on it. The client
 holds the OAuth token state, knows how to refresh it, and translates HTTP
-errors into XeroKiwi exceptions.
+errors into Xero Kiwi exceptions.
 
 ## Constructing a client
 
@@ -349,7 +371,7 @@ skipped: a 401 raises immediately and you handle it in your own code.
 
 ## Custom adapters
 
-XeroKiwi uses Faraday under the hood, so you can swap the HTTP adapter for
+Xero Kiwi uses Faraday under the hood, so you can swap the HTTP adapter for
 testing or for connection pooling:
 
 ```ruby
@@ -375,7 +397,7 @@ test adapter swallows refresh requests too.
 
 ## Customising the retry policy
 
-`retry_options:` is merged into XeroKiwi's defaults, so you only need to specify
+`retry_options:` is merged into Xero Kiwi's defaults, so you only need to specify
 overrides:
 
 ```ruby
@@ -630,7 +652,7 @@ token = oauth.exchange_code(
 
 If you pass a `pkce:` to `authorization_url` but **forget** the
 `code_verifier:` on `exchange_code`, Xero will reject the exchange with
-`invalid_grant` and XeroKiwi will raise `XeroKiwi::OAuth::CodeExchangeError`.
+`invalid_grant` and Xero Kiwi will raise `XeroKiwi::OAuth::CodeExchangeError`.
 
 ## Step 2: handling the callback
 
@@ -921,7 +943,7 @@ end
 
 ## Things OAuth deliberately does NOT do
 
-- **No session storage.** XeroKiwi gives you `generate_state` and
+- **No session storage.** Xero Kiwi gives you `generate_state` and
   `generate_pkce` as helpers but never touches your session/cookies/Redis.
   Where you stash the values is your problem — and that's a feature,
   because every framework is different.
@@ -946,7 +968,7 @@ FILE: docs/tokens.md
 
 # Tokens
 
-This doc covers everything about token *state* in XeroKiwi: the `XeroKiwi::Token`
+This doc covers everything about token *state* in Xero Kiwi: the `XeroKiwi::Token`
 value object, how the client refreshes tokens automatically, the persistence
 callback, manual refresh, revocation, and the gotchas around token rotation.
 
@@ -1023,7 +1045,7 @@ The `now:` keyword arg lets you inject a fixed time for testing.
 ### Why `expired?` returns false on nil `expires_at`
 
 If you don't know when the token expires (e.g. you loaded a credential from
-storage that was created before you tracked expiry), XeroKiwi treats it as
+storage that was created before you tracked expiry), Xero Kiwi treats it as
 "unknown" and assumes valid. The fallback is reactive — your first 401 will
 trigger a refresh.
 
@@ -1109,7 +1131,7 @@ token and fail.
 ### Persistence patterns
 
 Different applications store credentials differently. The callback works the
-same in all of them — XeroKiwi just hands you the new token and trusts you to
+same in all of them — Xero Kiwi just hands you the new token and trusts you to
 put it somewhere:
 
 ```ruby
@@ -1146,7 +1168,7 @@ integrations:
 > and gets `invalid_grant`. From Worker B's perspective, the credential
 > looks dead — but it's not, A just rotated it.
 
-XeroKiwi mitigates this in two ways:
+Xero Kiwi mitigates this in two ways:
 
 1. **Single-process safety.** A `Mutex` around refresh, with a double-check
    inside, prevents multiple threads in the *same process* from racing.
@@ -1199,7 +1221,7 @@ Use Redis (or Postgres advisory locks, etc.) to take a distributed lock
 keyed by credential ID before refreshing. Slower but more robust than
 Option B.
 
-XeroKiwi doesn't ship any of these — they're application-level decisions that
+Xero Kiwi doesn't ship any of these — they're application-level decisions that
 depend on your infrastructure. But the existence of `client.token.refreshable?`
 and the explicit `XeroKiwi::TokenRefreshError` give you the building blocks.
 
@@ -1225,7 +1247,7 @@ This:
 
 After revocation, **treat the client as dead.** Subsequent API calls will
 401, and reactive refresh will fail because the refresh token is gone too.
-XeroKiwi doesn't set an internal flag on the client — there's no
+Xero Kiwi doesn't set an internal flag on the client — there's no
 `client.revoked?` predicate — because the right thing for a caller to do
 post-revocation is throw the client away, not keep using it.
 
@@ -1253,7 +1275,7 @@ Xero accepts both. **But** revoking the access token only kills that one
 access token — the refresh token stays alive and can mint a new one
 immediately. Revoking the refresh token invalidates the entire chain.
 
-XeroKiwi enforces the refresh-token path: `Client#revoke_token!` raises if you
+Xero Kiwi enforces the refresh-token path: `Client#revoke_token!` raises if you
 don't have a refresh token, rather than silently revoking the access token
 (which would do almost nothing useful). This avoids a foot-gun where users
 think they've logged out but the token is still happily working.
@@ -1280,7 +1302,7 @@ log the full hash.
   full hash, which works for "is this the same token?" but isn't a security
   check. Don't use it for authentication.
 - **No JWT decoding of the access token.** Xero's access tokens are JWTs,
-  but XeroKiwi doesn't peek at their contents. The `id_token` is the OIDC
+  but Xero Kiwi doesn't peek at their contents. The `id_token` is the OIDC
   identity assertion you should care about; see [OAuth](oauth.md#id-token-verification)
   for verifying it.
 
@@ -1365,7 +1387,7 @@ old_connections - new_connections # diff by id
 
 Xero serialises dates in C# DateTime format and frequently omits the timezone
 marker on values that are documented as UTC (e.g. `"2019-07-09T23:40:30.1833130"`).
-XeroKiwi force-appends a `Z` before parsing so you always get a UTC `Time` back —
+Xero Kiwi force-appends a `Z` before parsing so you always get a UTC `Time` back —
 without this, `Time.parse` would silently fall back to local time and you'd
 get the wrong instant.
 
@@ -1814,7 +1836,7 @@ API. Connections use ISO 8601 strings (e.g. `"2019-07-09T23:40:30.1833130"`),
 but the Accounting API (including Organisation) uses the legacy .NET JSON
 format: `/Date(1574275974000)/`.
 
-XeroKiwi handles both transparently — all `Time` attributes are parsed to UTC
+Xero Kiwi handles both transparently — all `Time` attributes are parsed to UTC
 `Time` objects regardless of which format Xero sends. You don't need to think
 about this unless you're looking at raw cassette data or debugging timestamp
 issues.
@@ -1931,7 +1953,7 @@ Two users are `==` if they share the same `user_id`. `#hash` is consistent with
 ## Date parsing
 
 The `updated_date_utc` field uses Xero's .NET JSON timestamp format
-(`/Date(1516230549137+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+(`/Date(1516230549137+0000)/`). Xero Kiwi parses both .NET JSON and ISO 8601
 formats transparently — the attribute is always a UTC `Time` object.
 
 ## Error behaviour
@@ -2595,7 +2617,7 @@ sets.
 ## Date parsing
 
 The `created_date_utc` field uses Xero's .NET JSON timestamp format
-(`/Date(946684800000+0000)/`). XeroKiwi parses both .NET JSON and ISO 8601
+(`/Date(946684800000+0000)/`). Xero Kiwi parses both .NET JSON and ISO 8601
 formats transparently — the attribute is always a UTC `Time` object.
 
 ## Error behaviour
@@ -2849,7 +2871,7 @@ FILE: docs/errors.md
 
 # Errors
 
-Every failure path in XeroKiwi raises a typed exception. This page walks through
+Every failure path in Xero Kiwi raises a typed exception. This page walks through
 the hierarchy, explains what each class means, and tells you what to catch
 in common situations.
 
@@ -2857,7 +2879,7 @@ in common situations.
 
 ```
 StandardError
-└─ XeroKiwi::Error                       (root — catch this for "anything XeroKiwi raised")
+└─ XeroKiwi::Error                       (root — catch this for "anything Xero Kiwi raised")
    ├─ XeroKiwi::APIError                 (root for HTTP responses; carries status + body)
    │  ├─ XeroKiwi::AuthenticationError   (401)
    │  │  ├─ XeroKiwi::TokenRefreshError  (refresh round-trip failed)
@@ -2871,7 +2893,7 @@ StandardError
 
 A few things worth noticing about the shape:
 
-- **Everything XeroKiwi raises** descends from `XeroKiwi::Error`. If you only want
+- **Everything Xero Kiwi raises** descends from `XeroKiwi::Error`. If you only want
   one rescue clause for "the Xero integration broke," catch this.
 - **HTTP responses** descend from `XeroKiwi::APIError`, which carries `status`
   and `body` attributes you can inspect.
@@ -2887,7 +2909,7 @@ A few things worth noticing about the shape:
 ### `XeroKiwi::Error`
 
 The root class. Inherits from `StandardError`. You almost never raise this
-directly — it exists as a catch-all for code that wants to rescue "any XeroKiwi
+directly — it exists as a catch-all for code that wants to rescue "any Xero Kiwi
 problem" without enumerating every subclass.
 
 ### `XeroKiwi::APIError`
@@ -2911,7 +2933,7 @@ The access token was rejected. The most common causes:
 - Token has the wrong scopes for this endpoint.
 - The wrong tenant ID was passed in the `Xero-Tenant-Id` header.
 
-If your client has refresh capability, XeroKiwi will already have tried to
+If your client has refresh capability, Xero Kiwi will already have tried to
 refresh and retry exactly once before this raises. Seeing `AuthenticationError`
 on a refresh-capable client means **the second 401 also failed** — refresh
 won't fix it, and you need to either re-authorise or surface the error.
@@ -2964,9 +2986,9 @@ Inspect `error.body` to surface it.
 
 ### `XeroKiwi::ServerError` (HTTP 5xx)
 
-A 5xx response that wasn't retried. XeroKiwi retries 502/503/504 automatically
+A 5xx response that wasn't retried. Xero Kiwi retries 502/503/504 automatically
 (see [retries and rate limits](retries-and-rate-limits.md)) so by the time
-you see this, the retries are exhausted or the status was 500 (which XeroKiwi
+you see this, the retries are exhausted or the status was 500 (which Xero Kiwi
 deliberately doesn't retry, since 500s are usually persistent bugs in the
 request rather than transient infrastructure issues).
 
@@ -3013,7 +3035,7 @@ The error message has a brief description of which check failed (e.g.
 
 ## What to catch when
 
-### "Any XeroKiwi failure"
+### "Any Xero Kiwi failure"
 
 ```ruby
 begin
@@ -3105,12 +3127,12 @@ Order matters — `TokenRefreshError` is more specific than
 
 ## Things the error system deliberately does NOT do
 
-- **No "this error is retryable" predicate.** XeroKiwi already retries the
+- **No "this error is retryable" predicate.** Xero Kiwi already retries the
   cases that *should* be retried at the HTTP level. By the time an exception
   reaches your code, the retries are exhausted and the situation is
   application-level. Adding `error.retryable?` would create a tempting
   foot-gun where callers retry inside their own code, doubling up on the
-  retries XeroKiwi is already doing.
+  retries Xero Kiwi is already doing.
 - **No automatic Sentry / Bugsnag integration.** Errors raise normally;
   configure your own observability layer to catch them at the boundary.
 - **No `error.code` enum.** The HTTP `status` is the enum. Inspecting it
@@ -3126,7 +3148,7 @@ FILE: docs/retries-and-rate-limits.md
 
 # Retries and rate limits
 
-This doc explains how XeroKiwi handles transient failures: rate limiting, server
+This doc explains how Xero Kiwi handles transient failures: rate limiting, server
 errors, and network blips. Most of the time you don't need to know any of
 this — the defaults are sensible. Read on if you need to tune the retry
 policy or you want to understand what's happening when a request mysteriously
@@ -3146,9 +3168,9 @@ Xero enforces three separate rate limits, all returned with HTTP 429:
 Plus a `Retry-After` header on every 429 telling you how many seconds to
 wait before trying again.
 
-## What XeroKiwi does automatically
+## What Xero Kiwi does automatically
 
-XeroKiwi sets up a `faraday-retry` middleware that handles transient failures
+Xero Kiwi sets up a `faraday-retry` middleware that handles transient failures
 without any code from you. The default retry policy:
 
 | Setting | Default | Why |
@@ -3164,13 +3186,13 @@ without any code from you. The default retry policy:
 ### Retry-After is honoured
 
 `faraday-retry` automatically respects the `Retry-After` header on 429
-responses. So if Xero says "wait 30 seconds," XeroKiwi waits 30 seconds before
+responses. So if Xero says "wait 30 seconds," Xero Kiwi waits 30 seconds before
 retrying — not the exponential backoff schedule. This is the whole reason
 to use a real retry middleware instead of rolling your own.
 
 ### Which 5xx are retried
 
-XeroKiwi retries `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway
+Xero Kiwi retries `502 Bad Gateway`, `503 Service Unavailable`, and `504 Gateway
 Timeout`. These are the canonical "the upstream is having a temporary
 problem" statuses.
 
@@ -3192,7 +3214,7 @@ The retried request count includes the original attempt, so `max: 4` means
 
 ## Customising the retry policy
 
-Pass `retry_options:` to `XeroKiwi::Client.new`. The hash is merged into XeroKiwi's
+Pass `retry_options:` to `XeroKiwi::Client.new`. The hash is merged into Xero Kiwi's
 defaults, so you only specify what you want to change:
 
 ```ruby
@@ -3235,7 +3257,7 @@ retry_options: {
 }
 ```
 
-This is what XeroKiwi's own test suite uses to keep specs deterministic and
+This is what Xero Kiwi's own test suite uses to keep specs deterministic and
 fast.
 
 **Adding 500 to the retry list** (against my advice, but sometimes you
@@ -3249,7 +3271,7 @@ retry_options: {
 
 ### One thing you must NOT remove
 
-XeroKiwi's default `exceptions:` list includes `Faraday::RetriableResponse`,
+Xero Kiwi's default `exceptions:` list includes `Faraday::RetriableResponse`,
 which is the *internal* signal `faraday-retry` uses to flag a status-code
 retry. **It must stay in the list**, or the retry middleware can't catch
 its own retry signal and 429s/503s will never be retried — they'll bubble
@@ -3295,7 +3317,7 @@ needs to know about `RateLimitError` to know to retry it. That's brittle.
 By putting Retry on the inside, the retry middleware sees raw HTTP envs
 with status 429 and uses its own `retry_statuses` config to decide what to
 do. ResponseHandler only sees the *final* env (after retries are done) and
-maps it to a XeroKiwi exception.
+maps it to a Xero Kiwi exception.
 
 You don't need to think about any of this — it's the gem's job — but if
 you ever subclass the client or insert your own middleware, this is the
@@ -3328,7 +3350,7 @@ retry/backoff schedules — they won't coordinate.
 
 If you need cross-thread coordination (e.g. "all threads should pause when
 any one of them hits a 429"), build it at the application level using a
-shared semaphore or rate limiter. XeroKiwi doesn't ship one, because the right
+shared semaphore or rate limiter. Xero Kiwi doesn't ship one, because the right
 shape depends entirely on your traffic patterns.
 
 ## Things the retry layer deliberately does NOT do
@@ -3338,14 +3360,16 @@ shape depends entirely on your traffic patterns.
 - **No retry on 4xx (other than 429).** 4xx means the client did something
   wrong; retrying won't fix it. The exception is 429 (rate limit), which is
   classified as 4xx but is fundamentally a "wait and try again" signal.
-- **No global rate limiter.** XeroKiwi reacts to 429s as they happen but
-  doesn't proactively throttle — it'll happily fire 100 concurrent requests
-  and rely on Xero's 429s to slow things down. If you need proactive
-  throttling, do it at your job-queue level.
+- **No global rate limiter *by default*.** Xero Kiwi reacts to 429s as they
+  happen but doesn't proactively throttle unless you opt in. For multi-worker
+  setups where several processes hit the same tenant, wire up the
+  Redis-backed token bucket described in
+  [throttling.md](throttling.md) — it composes with this retry layer rather
+  than replacing it.
 - **No retry budget across calls.** Each `client.connections` (or any
   other call) gets a fresh `max` retries. There's no concept of "this client
   has had too many retries today and should stop trying."
 - **No automatic Sidekiq integration.** When `RateLimitError` raises, it's
-  up to your job to re-enqueue using the `retry_after` value. XeroKiwi exposes
+  up to your job to re-enqueue using the `retry_after` value. Xero Kiwi exposes
   it; what you do with it is your call.
 

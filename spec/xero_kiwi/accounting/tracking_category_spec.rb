@@ -37,7 +37,7 @@ RSpec.describe XeroKiwi::Accounting::TrackingCategory do
       hash = tc.to_h
 
       expect(hash[:name]).to eq("Activity/Workstream")
-      expect(hash.keys).to match_array(described_class::ATTRIBUTES.keys)
+      expect(hash.keys).to match_array(described_class.attributes.keys)
     end
   end
 

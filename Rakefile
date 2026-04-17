@@ -57,7 +57,7 @@ def append_file_block(out, path)
   out << "\n" << separator << "\n"
   out << "FILE: #{path}\n"
   out << separator << "\n\n"
-  out << File.read(path) << "\n"
+  out << File.read(path, encoding: "UTF-8") << "\n"
 end
 
 namespace :llms do

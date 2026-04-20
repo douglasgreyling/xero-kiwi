@@ -34,6 +34,7 @@ LLMS_SOURCE_FILES = %w[
   docs/accounting/payment-terms.md
   docs/errors.md
   docs/retries-and-rate-limits.md
+  docs/querying.md
 ].freeze
 
 LLMS_FULL_PATH = "llms-full.txt"
@@ -43,7 +44,7 @@ LLMS_FULL_PATH = "llms-full.txt"
 # `llms:check` use this so the two tasks can never disagree about the
 # expected output.
 def build_llms_full
-  out = +""
+  out = String.new(encoding: "UTF-8")
   out << "# Xero Kiwi — full documentation\n\n"
   out << "This file is the complete documentation for the Xero Kiwi gem (a Ruby wrapper for the Xero Accounting API), assembled into a single document for LLM consumption. It contains the README and every doc in the docs/ folder, in reading order.\n\n"
   out << "For the curated index version, see llms.txt in the same directory.\n\n"
@@ -70,7 +71,7 @@ namespace :llms do
   desc "Verify llms-full.txt is up to date with README and docs/"
   task :check do
     expected = build_llms_full
-    actual   = File.exist?(LLMS_FULL_PATH) ? File.read(LLMS_FULL_PATH) : ""
+    actual   = File.exist?(LLMS_FULL_PATH) ? File.read(LLMS_FULL_PATH, encoding: "UTF-8") : ""
 
     if expected == actual
       puts "✓ #{LLMS_FULL_PATH} is up to date"

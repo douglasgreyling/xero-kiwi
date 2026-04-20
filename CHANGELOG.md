@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-20
+
+### Added
+
+- `XeroKiwi.default_throttle` + `XeroKiwi.configure { |c| c.default_throttle = ... }` for configuring one shared throttle limiter at the module level. New `Client` instances pick it up automatically when no `throttle:` kwarg is passed, so a Rails app can wire a single `RedisTokenBucket` in an initializer instead of threading it through every call site. Per-instance `throttle:` still overrides. See `docs/throttling.md`.
+
 ## [0.3.0] - 2026-04-20
 
 ### Added

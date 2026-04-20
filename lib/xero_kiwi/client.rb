@@ -2,6 +2,7 @@
 
 require "faraday"
 require "faraday/retry"
+require "time"
 
 module XeroKiwi
   # Entry point for talking to Xero. Holds the OAuth2 token state, knows how
@@ -107,16 +108,25 @@ module XeroKiwi
     # Fetches the Users for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/users
-    def users(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def users(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Users",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::User,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Users") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::User.from_response(response.body)
-      end
+    # Yields every User across all pages, driving `#users` with `page:` until
+    # an empty page signals the end. Returns an Enumerator when no block is
+    # given.
+    def each_user(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_user, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:users, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single User by ID for the given tenant. Accepts a tenant-id
@@ -138,16 +148,22 @@ module XeroKiwi
     # Fetches the Contacts for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/contacts
-    def contacts(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def contacts(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Contacts",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::Contact,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Contacts") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::Contact.from_response(response.body)
-      end
+    def each_contact(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_contact, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:contacts, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Contact by ID for the given tenant. Accepts a tenant-id
@@ -169,16 +185,22 @@ module XeroKiwi
     # Fetches the Contact Groups for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/contactgroups
-    def contact_groups(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def contact_groups(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/ContactGroups",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::ContactGroup,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/ContactGroups") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::ContactGroup.from_response(response.body)
-      end
+    def each_contact_group(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_contact_group, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:contact_groups, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Contact Group by ID for the given tenant. Accepts a
@@ -200,16 +222,22 @@ module XeroKiwi
     # Fetches the Prepayments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/prepayments
-    def prepayments(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def prepayments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Prepayments",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::Prepayment,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Prepayments") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::Prepayment.from_response(response.body)
-      end
+    def each_prepayment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_prepayment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:prepayments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Prepayment by ID for the given tenant. Accepts a
@@ -231,16 +259,22 @@ module XeroKiwi
     # Fetches the Credit Notes for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/creditnotes
-    def credit_notes(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def credit_notes(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/CreditNotes",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::CreditNote,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/CreditNotes") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::CreditNote.from_response(response.body)
-      end
+    def each_credit_note(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_credit_note, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:credit_notes, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Credit Note by ID for the given tenant. Accepts a
@@ -262,16 +296,22 @@ module XeroKiwi
     # Fetches the Overpayments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/overpayments
-    def overpayments(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def overpayments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Overpayments",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::Overpayment,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Overpayments") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::Overpayment.from_response(response.body)
-      end
+    def each_overpayment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_overpayment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:overpayments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Overpayment by ID for the given tenant. Accepts a
@@ -293,16 +333,22 @@ module XeroKiwi
     # Fetches the Payments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/payments
-    def payments(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def payments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Payments",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::Payment,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Payments") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::Payment.from_response(response.body)
-      end
+    def each_payment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_payment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:payments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Payment by ID for the given tenant. Accepts a
@@ -324,16 +370,22 @@ module XeroKiwi
     # Fetches the Invoices for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/invoices
-    def invoices(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def invoices(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/Invoices",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::Invoice,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/Invoices") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::Invoice.from_response(response.body)
-      end
+    def each_invoice(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_invoice, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:invoices, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Invoice by ID for the given tenant. Accepts a
@@ -371,16 +423,22 @@ module XeroKiwi
     # Fetches the Branding Themes for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/brandingthemes
-    def branding_themes(tenant_id)
-      tid = extract_tenant_id(tenant_id)
-      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+    def branding_themes(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/BrandingThemes",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::BrandingTheme,
+        where:          where,
+        order:          order,
+        page:           page,
+        modified_since: modified_since
+      )
+    end
 
-      with_authenticated_request do
-        response = http.get("/api.xro/2.0/BrandingThemes") do |req|
-          req.headers["Xero-Tenant-Id"] = tid
-        end
-        Accounting::BrandingTheme.from_response(response.body)
-      end
+    def each_branding_theme(tenant_id, where: nil, order: nil, modified_since: nil, &block)
+      return to_enum(:each_branding_theme, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+
+      walk_pages(:branding_themes, tenant_id, where: where, order: order, modified_since: modified_since, &block)
     end
 
     # Fetches a single Branding Theme by ID for the given tenant. Accepts a
@@ -441,6 +499,62 @@ module XeroKiwi
     end
 
     private
+
+    # Canonical list request. Compiles `where` / `order` from the resource's
+    # query_fields, sends `page` straight through, and translates
+    # `modified_since` to the `If-Modified-Since` header. Wraps the response
+    # in a XeroKiwi::Page.
+    def list_request(path:, tenant_id:, resource_class:, # rubocop:disable Metrics/AbcSize
+                     where:, order:, page:, modified_since:)
+      tid = extract_tenant_id(tenant_id)
+      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+
+      fields          = resource_class.query_fields
+      params          = {}
+      params["where"] = Query::Filter.compile(where, fields: fields) if where
+      params["order"] = Query::Order.compile(order, fields: fields) if order
+      params["page"]  = page if page
+
+      with_authenticated_request do
+        response = http.get(path, params) do |req|
+          req.headers["Xero-Tenant-Id"]    = tid
+          req.headers["If-Modified-Since"] = modified_since.utc.httpdate if modified_since
+        end
+        build_page(response, resource_class)
+      end
+    end
+
+    def build_page(response, resource_class)
+      return Page.new(items: []) if response.status == 304
+
+      items = resource_class.from_response(response.body)
+      pag   = response.body.is_a?(Hash) ? response.body["pagination"] : nil
+
+      Page.new(
+        items:       items,
+        page:        pag&.dig("page")      || 1,
+        page_size:   pag&.dig("pageSize")  || items.size,
+        item_count:  pag&.dig("itemCount") || items.size,
+        total_count: pag&.dig("itemCount")
+      )
+    end
+
+    # Shared lazy page-walker powering all `each_*` helpers. Uses the given
+    # list method repeatedly, incrementing `page:` until an empty page or a
+    # partially-filled page signals the end.
+    def walk_pages(list_method, tenant_id, where:, order:, modified_since:, &)
+      (1..Float::INFINITY).lazy.each do |p|
+        pg = send(list_method, tenant_id,
+                  where:          where,
+                  order:          order,
+                  page:           p,
+                  modified_since: modified_since)
+        break if pg.empty?
+
+        pg.each(&)
+        break if pg.page_size && pg.size < pg.page_size
+      end
+    end
 
     # Wraps each API call with proactive + reactive token refresh:
     #
@@ -551,7 +665,10 @@ module XeroKiwi
     # final response.
     class ResponseHandler < Faraday::Middleware
       def on_complete(env)
-        return if (200..299).cover?(env.status)
+        # 304 Not Modified is a valid response to a conditional GET
+        # (If-Modified-Since). Let it through so the list helper can
+        # return an empty Page.
+        return if (200..299).cover?(env.status) || env.status == 304
 
         raise error_for(env)
       end

@@ -12,22 +12,22 @@ module XeroKiwi
       identity    :invoice_id
 
       attribute :invoice_id,                      xero: "InvoiceID", type: :guid
-      attribute :invoice_number,                  xero: "InvoiceNumber"
-      attribute :type,                            xero: "Type",                       type: :enum
-      attribute :contact,                         xero: "Contact",                    type: :object, of: Contact, reference: true
-      attribute :date,                            xero: "Date",                       type: :date
-      attribute :due_date,                        xero: "DueDate",                    type: :date
-      attribute :status,                          xero: "Status",                     type: :enum
+      attribute :invoice_number,                  xero: "InvoiceNumber", query: true
+      attribute :type,                            xero: "Type",                       type: :enum, query: true
+      attribute :contact,                         xero: "Contact",                    type: :object, of: Contact, reference: true, query: true
+      attribute :date,                            xero: "Date",                       type: :date, query: true
+      attribute :due_date,                        xero: "DueDate",                    type: :date, query: true
+      attribute :status,                          xero: "Status",                     type: :enum, query: true
       attribute :line_amount_types,               xero: "LineAmountTypes"
       attribute :line_items,                      xero: "LineItems",                  type: :collection, of: LineItem
       attribute :sub_total,                       xero: "SubTotal",                   type: :decimal
       attribute :total_tax,                       xero: "TotalTax",                   type: :decimal
       attribute :total,                           xero: "Total",                      type: :decimal
       attribute :total_discount,                  xero: "TotalDiscount",              type: :decimal
-      attribute :updated_date_utc,                xero: "UpdatedDateUTC",             type: :date
+      attribute :updated_date_utc,                xero: "UpdatedDateUTC",             type: :date, query: true
       attribute :currency_code,                   xero: "CurrencyCode"
       attribute :currency_rate,                   xero: "CurrencyRate", type: :decimal
-      attribute :reference,                       xero: "Reference"
+      attribute :reference,                       xero: "Reference", query: true
       attribute :branding_theme_id,               xero: "BrandingThemeID", type: :guid
       attribute :url,                             xero: "Url"
       attribute :sent_to_contact,                 xero: "SentToContact",              type: :bool

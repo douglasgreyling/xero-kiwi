@@ -17,12 +17,12 @@ module XeroKiwi
 
       attribute :contact_id,                         xero: "ContactID", type: :guid
       attribute :contact_number,                     xero: "ContactNumber"
-      attribute :account_number,                     xero: "AccountNumber"
-      attribute :contact_status,                     xero: "ContactStatus", type: :enum
-      attribute :name,                               xero: "Name"
-      attribute :first_name,                         xero: "FirstName"
-      attribute :last_name,                          xero: "LastName"
-      attribute :email_address,                      xero: "EmailAddress"
+      attribute :account_number,                     xero: "AccountNumber", query: true
+      attribute :contact_status,                     xero: "ContactStatus", type: :enum, query: true
+      attribute :name,                               xero: "Name", query: true
+      attribute :first_name,                         xero: "FirstName", query: true
+      attribute :last_name,                          xero: "LastName", query: true
+      attribute :email_address,                      xero: "EmailAddress", query: true
       attribute :bank_account_details,               xero: "BankAccountDetails"
       attribute :company_number,                     xero: "CompanyNumber"
       attribute :tax_number,                         xero: "TaxNumber"
@@ -31,10 +31,10 @@ module XeroKiwi
       attribute :accounts_payable_tax_type,          xero: "AccountsPayableTaxType"
       attribute :addresses,                          xero: "Addresses",                      type: :collection, of: Address
       attribute :phones,                             xero: "Phones",                         type: :collection, of: Phone
-      attribute :is_supplier,                        xero: "IsSupplier",                     type: :bool
-      attribute :is_customer,                        xero: "IsCustomer",                     type: :bool
+      attribute :is_supplier,                        xero: "IsSupplier",                     type: :bool, query: true
+      attribute :is_customer,                        xero: "IsCustomer",                     type: :bool, query: true
       attribute :default_currency,                   xero: "DefaultCurrency"
-      attribute :updated_date_utc,                   xero: "UpdatedDateUTC",                 type: :date
+      attribute :updated_date_utc,                   xero: "UpdatedDateUTC",                 type: :date, query: true
       attribute :contact_persons,                    xero: "ContactPersons",                 type: :collection, of: ContactPerson
       attribute :xero_network_key,                   xero: "XeroNetworkKey"
       attribute :merged_to_contact_id,               xero: "MergedToContactID", type: :guid

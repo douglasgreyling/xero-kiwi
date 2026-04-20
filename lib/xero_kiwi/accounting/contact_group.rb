@@ -12,8 +12,8 @@ module XeroKiwi
       identity    :contact_group_id
 
       attribute :contact_group_id, xero: "ContactGroupID", type: :guid
-      attribute :name,             xero: "Name"
-      attribute :status,           xero: "Status"
+      attribute :name,             xero: "Name",   query: true
+      attribute :status,           xero: "Status", query: true
       attribute :contacts,         xero: "Contacts", type: :collection, of: Contact, reference: true
 
       def active? = status == "ACTIVE"

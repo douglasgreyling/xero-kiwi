@@ -12,7 +12,7 @@ module XeroKiwi
       identity    :branding_theme_id
 
       attribute :branding_theme_id, xero: "BrandingThemeID", type: :guid
-      attribute :name,              xero: "Name"
+      attribute :name,              xero: "Name", query: true
       attribute :logo_url,          xero: "LogoUrl"
       attribute :type,              xero: "Type"
       attribute :sort_order,        xero: "SortOrder"

@@ -129,7 +129,7 @@ Metrics/BlockLength:
   Enabled: false
 
 Metrics/ClassLength:
-  Max: 350
+  Max: 500
 
 Metrics/MethodLength:
   Max: 15

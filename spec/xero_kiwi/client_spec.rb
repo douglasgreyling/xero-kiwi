@@ -381,7 +381,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Users" => []), headers: json_headers)
 
-      expect(client.users(tenant_id)).to eq([])
+      expect(client.users(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -577,7 +577,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Contacts" => []), headers: json_headers)
 
-      expect(client.contacts(tenant_id)).to eq([])
+      expect(client.contacts(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -756,7 +756,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("ContactGroups" => []), headers: json_headers)
 
-      expect(client.contact_groups(tenant_id)).to eq([])
+      expect(client.contact_groups(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -923,7 +923,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Prepayments" => []), headers: json_headers)
 
-      expect(client.prepayments(tenant_id)).to eq([])
+      expect(client.prepayments(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -1092,7 +1092,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("CreditNotes" => []), headers: json_headers)
 
-      expect(client.credit_notes(tenant_id)).to eq([])
+      expect(client.credit_notes(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -1260,7 +1260,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Overpayments" => []), headers: json_headers)
 
-      expect(client.overpayments(tenant_id)).to eq([])
+      expect(client.overpayments(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -1428,7 +1428,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Payments" => []), headers: json_headers)
 
-      expect(client.payments(tenant_id)).to eq([])
+      expect(client.payments(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -1599,7 +1599,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("Invoices" => []), headers: json_headers)
 
-      expect(client.invoices(tenant_id)).to eq([])
+      expect(client.invoices(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do
@@ -1616,6 +1616,136 @@ RSpec.describe XeroKiwi::Client do
         .to_return(status: 401, body: '{"error":"invalid_token"}', headers: json_headers)
 
       expect { client.invoices(tenant_id) }.to raise_error(XeroKiwi::AuthenticationError)
+    end
+
+    it "returns a XeroKiwi::Page wrapping the items" do
+      stub_request(:get, invoices_endpoint)
+        .with(headers: { "Xero-Tenant-Id" => tenant_id })
+        .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      result = client.invoices(tenant_id)
+
+      expect(result).to be_a(XeroKiwi::Page)
+      expect(result.size).to eq(1)
+    end
+
+    it "compiles a Hash where into Xero's filter grammar" do
+      stub = stub_request(:get, invoices_endpoint)
+             .with(
+               headers: { "Xero-Tenant-Id" => tenant_id },
+               query:   { "where" => 'Status=="AUTHORISED"&&Type=="ACCREC"' }
+             )
+             .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      client.invoices(tenant_id, where: { status: "AUTHORISED", type: "ACCREC" })
+
+      expect(stub).to have_been_requested
+    end
+
+    it "passes a raw String where through unchanged" do
+      raw  = 'Status=="AUTHORISED" || Status=="DRAFT"'
+      stub = stub_request(:get, invoices_endpoint)
+             .with(query: hash_including("where" => raw))
+             .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      client.invoices(tenant_id, where: raw)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "compiles a Hash order into the order param" do
+      stub = stub_request(:get, invoices_endpoint)
+             .with(query: { "order" => "Date DESC,InvoiceNumber ASC" })
+             .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      client.invoices(tenant_id, order: { date: :desc, invoice_number: :asc })
+
+      expect(stub).to have_been_requested
+    end
+
+    it "passes page: through as a query param" do
+      stub = stub_request(:get, invoices_endpoint)
+             .with(query: { "page" => "2" })
+             .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      client.invoices(tenant_id, page: 2)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "sends If-Modified-Since in RFC 1123 format when modified_since is given" do
+      since = Time.utc(2026, 3, 1, 12, 0, 0)
+      stub  = stub_request(:get, invoices_endpoint)
+              .with(headers: { "If-Modified-Since" => since.httpdate })
+              .to_return(status: 200, body: JSON.dump(invoices_payload), headers: json_headers)
+
+      client.invoices(tenant_id, modified_since: since)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "returns an empty Page on 304 Not Modified" do
+      stub_request(:get, invoices_endpoint)
+        .with(headers: { "Xero-Tenant-Id" => tenant_id })
+        .to_return(status: 304, body: "", headers: {})
+
+      page = client.invoices(tenant_id, modified_since: Time.utc(2026, 3, 1))
+
+      expect(page).to be_a(XeroKiwi::Page)
+      expect(page).to be_empty
+    end
+
+    it "populates pagination metadata from the response envelope when present" do
+      paged_body = invoices_payload.merge(
+        "pagination" => { "page" => 2, "pageSize" => 100, "pageCount" => 5, "itemCount" => 450 }
+      )
+      stub_request(:get, invoices_endpoint)
+        .with(query: { "page" => "2" })
+        .to_return(status: 200, body: JSON.dump(paged_body), headers: json_headers)
+
+      page = client.invoices(tenant_id, page: 2)
+
+      expect(page).to have_attributes(page: 2, page_size: 100, item_count: 450, total_count: 450)
+    end
+
+    it "raises ArgumentError when where references an unknown field" do
+      expect { client.invoices(tenant_id, where: { bogus: "x" }) }
+        .to raise_error(ArgumentError, /unknown filter field: :bogus/)
+    end
+  end
+
+  describe "#each_invoice" do
+    let(:tenant_id)         { "70784a63-d24b-46a9-a4db-0e70a274b056" }
+    let(:invoices_endpoint) { "https://api.xero.com/api.xro/2.0/Invoices" }
+
+    def page_body(page, ids, page_size: 2)
+      {
+        "Invoices"   => ids.map { |id| { "InvoiceID" => id } },
+        "pagination" => {
+          "page" => page, "pageSize" => page_size,
+          "pageCount" => 3, "itemCount" => 5
+        }
+      }
+    end
+
+    it "walks pages lazily until a short page ends iteration" do
+      stub_request(:get, invoices_endpoint).with(query: { "page" => "1" })
+                                           .to_return(status: 200, body: JSON.dump(page_body(1, %w[a b])), headers: json_headers)
+      stub_request(:get, invoices_endpoint).with(query: { "page" => "2" })
+                                           .to_return(status: 200, body: JSON.dump(page_body(2, %w[c d])), headers: json_headers)
+      stub_request(:get, invoices_endpoint).with(query: { "page" => "3" })
+                                           .to_return(status: 200, body: JSON.dump(page_body(3, %w[e])), headers: json_headers)
+
+      ids = client.each_invoice(tenant_id).map(&:invoice_id)
+
+      expect(ids).to eq(%w[a b c d e])
+    end
+
+    it "returns an Enumerator when no block is given" do
+      stub_request(:get, invoices_endpoint).with(query: { "page" => "1" })
+                                           .to_return(status: 200, body: JSON.dump(page_body(1, %w[a])), headers: json_headers)
+
+      expect(client.each_invoice(tenant_id)).to be_a(Enumerator)
     end
   end
 
@@ -1842,7 +1972,7 @@ RSpec.describe XeroKiwi::Client do
         .with(headers: { "Xero-Tenant-Id" => tenant_id })
         .to_return(status: 200, body: JSON.dump("BrandingThemes" => []), headers: json_headers)
 
-      expect(client.branding_themes(tenant_id)).to eq([])
+      expect(client.branding_themes(tenant_id)).to be_empty
     end
 
     it "raises ArgumentError when given nil" do

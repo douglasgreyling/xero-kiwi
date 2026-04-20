@@ -38,13 +38,14 @@ module XeroKiwi
           @payload_key = key
         end
 
-        def attribute(name, xero:, type: :string, of: nil, reference: false, hydrate: nil)
+        def attribute(name, xero:, type: :string, of: nil, reference: false, hydrate: nil, query: false)
           attributes[name] = {
             xero:      xero,
             type:      type,
             of:        of,
             reference: reference,
-            hydrate:   hydrate
+            hydrate:   hydrate,
+            query:     query
           }
 
           attr_reader name
@@ -61,6 +62,42 @@ module XeroKiwi
         def identity_attributes
           @identity_attributes
         end
+
+        # The queryable schema for this resource: the subset of attributes
+        # that can appear in Xero's `where` / `order` query params. Any
+        # attribute declared with `query: true` is included, and every
+        # `identity` attribute is implicitly queryable (resources always
+        # filter by their primary key).
+        #
+        # For `:object` attributes, the child's own `query_fields` is
+        # included as a nested schema so callers can filter on e.g.
+        # `contact: { contact_id: "..." }`, which the compiler renders as
+        # `Contact.ContactID==guid("...")`.
+        def query_fields
+          @_query_fields ||= attributes.each_with_object({}) do |(name, spec), acc|
+            next unless queryable?(name, spec)
+
+            acc[name] = build_query_field(spec)
+          end
+        end
+
+        private
+
+        def queryable?(name, spec)
+          spec[:query] || identity_attributes&.include?(name)
+        end
+
+        def build_query_field(spec)
+          klass = spec[:of].is_a?(Class) ? spec[:of] : (spec[:of] && Hydrator.resolve_class(spec[:of]))
+
+          if spec[:type] == :object && klass.respond_to?(:query_fields)
+            { path: spec[:xero], type: :nested, fields: klass.query_fields }
+          else
+            { path: spec[:xero], type: spec[:type] }
+          end
+        end
+
+        public
 
         def from_response(payload)
           return [] if payload.nil?
@@ -109,7 +146,7 @@ module XeroKiwi
       def hash
         ids = self.class.identity_attributes
         if ids && !ids.empty?
-          ([self.class] + ids.map { |attr| public_send(attr) }).hash
+          [self.class, *ids.map { |attr| public_send(attr) }].hash
         else
           [self.class, to_h].hash
         end
@@ -121,7 +158,7 @@ module XeroKiwi
       # Collections collapse to `[N items]`.
       def inspect
         pairs = self.class.attributes.map { |name, spec| "#{name}=#{format_for_inspect(public_send(name), spec)}" }
-        "#<#{self.class} #{pairs.join(' ')}>"
+        "#<#{self.class} #{pairs.join(" ")}>"
       end
 
       private
@@ -137,7 +174,7 @@ module XeroKiwi
         end
       end
 
-      def format_nested_object(obj)
+      def format_nested_object(obj) # rubocop:disable Metrics/AbcSize
         short = (obj.class.name || obj.class.to_s).split("::").last
         ids   = obj.class.respond_to?(:identity_attributes) ? obj.class.identity_attributes : nil
 

@@ -104,6 +104,7 @@ RSpec.describe XeroKiwi::Accounting::Resource do
       let(:klass) do
         Class.new do
           include XeroKiwi::Accounting::Resource
+
           identity :widget_id
           attribute :widget_id, xero: "WidgetID"
           attribute :name,      xero: "Name"
@@ -122,7 +123,7 @@ RSpec.describe XeroKiwi::Accounting::Resource do
       end
 
       it "returns false against a different class" do
-        other = Class.new { include XeroKiwi::Accounting::Resource }.new({})
+        other    = Class.new { include XeroKiwi::Accounting::Resource }.new({})
         instance = klass.new({ "WidgetID" => "abc" })
 
         expect(instance).not_to eq(other)
@@ -133,6 +134,7 @@ RSpec.describe XeroKiwi::Accounting::Resource do
       let(:klass) do
         Class.new do
           include XeroKiwi::Accounting::Resource
+
           attribute :name, xero: "Name"
           attribute :kind, xero: "Kind"
         end
@@ -189,6 +191,69 @@ RSpec.describe XeroKiwi::Accounting::Resource do
       instance = resource_klass.new({ "WidgetID" => "abc" })
 
       expect(instance.inspect).to include("parent=nil")
+    end
+  end
+
+  describe ".query_fields" do
+    it "includes identity attributes implicitly" do
+      klass = Class.new do
+        include XeroKiwi::Accounting::Resource
+
+        identity :widget_id
+        attribute :widget_id, xero: "WidgetID", type: :guid
+        attribute :name,      xero: "Name",     type: :string
+      end
+
+      expect(klass.query_fields.keys).to eq(%i[widget_id])
+      expect(klass.query_fields[:widget_id]).to eq(path: "WidgetID", type: :guid)
+    end
+
+    it "includes attributes marked query: true" do
+      klass = Class.new do
+        include XeroKiwi::Accounting::Resource
+
+        attribute :name,   xero: "Name",   query: true
+        attribute :status, xero: "Status", type: :enum, query: true
+        attribute :total,  xero: "Total",  type: :decimal
+      end
+
+      expect(klass.query_fields.keys).to eq(%i[name status])
+      expect(klass.query_fields[:status]).to eq(path: "Status", type: :enum)
+    end
+
+    it "excludes attributes without identity or query: true" do
+      klass = Class.new do
+        include XeroKiwi::Accounting::Resource
+
+        attribute :name, xero: "Name"
+      end
+
+      expect(klass.query_fields).to be_empty
+    end
+
+    it "returns a nested schema for :object attributes with query: true" do # rubocop:disable RSpec/ExampleLength
+      child        = Class.new do
+        include XeroKiwi::Accounting::Resource
+
+        identity :child_id
+        attribute :child_id, xero: "ChildID", type: :guid
+        attribute :name,     xero: "Name",    type: :string
+      end
+      parent_klass = Class.new { include XeroKiwi::Accounting::Resource }
+      parent_klass.attribute(:child, xero: "Child", type: :object, of: child, query: true)
+
+      field = parent_klass.query_fields[:child]
+
+      expect(field).to include(type: :nested, path: "Child")
+      expect(field[:fields][:child_id]).to eq(path: "ChildID", type: :guid)
+    end
+
+    it "handles String `of:` forward references via Hydrator.resolve_class" do
+      # This test relies on a real resource that's already loaded —
+      # ContactGroup references Contact via a Class ref, Contact references
+      # ContactGroup via a String ref. If the String resolution is working,
+      # Contact.query_fields can build without error.
+      expect { XeroKiwi::Accounting::Contact.query_fields }.not_to raise_error
     end
   end
 

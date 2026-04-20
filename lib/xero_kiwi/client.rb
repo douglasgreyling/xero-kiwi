@@ -77,7 +77,7 @@ module XeroKiwi
       @adapter          = adapter
       @user_agent       = user_agent
       @retry_options    = DEFAULT_RETRY_OPTIONS.merge(retry_options)
-      @throttle         = throttle || Throttle::NullLimiter.new
+      @throttle         = throttle || XeroKiwi.default_throttle || Throttle::NullLimiter.new
       @refresh_mutex    = Mutex.new
     end
 

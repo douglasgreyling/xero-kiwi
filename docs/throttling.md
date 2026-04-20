@@ -45,6 +45,34 @@ client.organisation(tenant_id)   # blocks briefly if the bucket is empty
 Same `throttle:` instance across all clients that share a Redis — that's how
 coordination happens.
 
+## Sharing one limiter across every client (Eg. Rails)
+
+Passing `throttle:` to every `Client.new` call gets tedious. Configure a
+module-level default once, and every new client picks it up automatically:
+
+```ruby
+# config/initializers/xero_kiwi.rb
+XeroKiwi.configure do |c|
+  c.default_throttle = XeroKiwi::Throttle::RedisTokenBucket.new(
+    redis:      Redis.new(url: ENV.fetch("REDIS_URL")),
+    per_minute: 55,
+    per_day:    4_900
+  )
+end
+```
+
+From then on:
+
+```ruby
+XeroKiwi::Client.new(access_token: token)             # uses default_throttle
+XeroKiwi::Client.new(access_token: token, throttle: other) # explicit override wins
+XeroKiwi::Client.new(access_token: token, throttle: XeroKiwi::Throttle::NullLimiter.new) # opt out
+```
+
+Precedence is: explicit `throttle:` kwarg → `XeroKiwi.default_throttle` →
+`NullLimiter`. Reset in tests with `XeroKiwi.default_throttle = nil` so global
+state doesn't leak between examples.
+
 ## How it works
 
 A token bucket per tenant, stored as a Redis hash. Each call to Xero consumes

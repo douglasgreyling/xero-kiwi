@@ -22,6 +22,10 @@ problem.
 - **Accounting resources**: fetch contacts, organisations, users, branding
   themes, and nested objects like addresses, phones, external links, and payment
   terms — all wrapped in proper value objects.
+- **Querying**: every list endpoint accepts `where` / `order` / `page` /
+  `modified_since`, with a typed hash DSL (`where: { status: "AUTHORISED" }`)
+  and raw-string escape hatches. Lazy `each_<resource>` helpers walk every
+  page for whole-tenant scans and incremental syncs.
 
 ## Installation
 
@@ -72,6 +76,7 @@ below.
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
 | [Retries and rate limits](docs/retries-and-rate-limits.md) | How Xero Kiwi handles 429s and transient failures, customising the retry policy |
 | [Throttling](docs/throttling.md) | Redis-backed token bucket for proactive rate-limit coordination across multiple workers |
+| [Querying](docs/querying.md) | `where` / `order` / `page` / `modified_since` on list endpoints, the `Page` return type, and `each_*` lazy pagination helpers |
 
 ## Status
 

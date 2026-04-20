@@ -1,5 +1,22 @@
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-20
+
+### Added
+
+- Every accounting list endpoint (`contacts`, `invoices`, `credit_notes`, `overpayments`, `prepayments`, `payments`, `users`, `branding_themes`, `contact_groups`) now accepts `where:`, `order:`, `page:`, and `modified_since:` kwargs. `where:` and `order:` take a typed Hash (field-name-aware, safe literal formatting) or a raw String (escape hatch). `page:` maps to Xero's `page` query param. `modified_since: Time` sends `If-Modified-Since`; a `304 Not Modified` response returns an empty `Page`. See `docs/querying.md`.
+- New `XeroKiwi::Page` return type for every list method — `Enumerable` with `size` / `empty?` / `to_a` / `page` / `page_size` / `item_count` / `total_count`.
+- Lazy `each_<resource>` helpers (`each_invoice`, `each_contact`, `each_payment`, `each_credit_note`, `each_prepayment`, `each_overpayment`, `each_branding_theme`, `each_contact_group`, `each_user`) that walk every page for whole-tenant scans or incremental syncs. Returns an `Enumerator` when no block is given.
+- `attribute` DSL gains a `query: true` kwarg; `identity` attributes are auto-included in the resource's `query_fields` schema so you rarely need `query: true` on IDs.
+
+### Breaking
+
+- List methods now return `XeroKiwi::Page`, not `Array`. `Page` is `Enumerable` + `size` / `empty?` / `to_a`, so `.each`, `.map`, `.first`, `.count`, `.select`, `.find` keep working. Callers relying on raw `Array` behaviour (`<<`, `[0..2]`, `push`, mutation, `JSON.dump(page)`, `page.is_a?(Array)`) should call `.to_a`.
+
+### Fixed
+
+- `ResponseHandler` now lets `304 Not Modified` through instead of raising.
+
 ## [0.2.1] - 2026-04-17
 
 ### Changed

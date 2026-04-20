@@ -35,4 +35,20 @@ require_relative "xero_kiwi/oauth/pkce"
 require_relative "xero_kiwi/oauth/id_token"
 
 module XeroKiwi
+  class << self
+    # Default throttle limiter applied to every new Client that doesn't pass
+    # its own `throttle:` kwarg. Lets a Rails app wire one shared limiter
+    # (e.g. a RedisTokenBucket) in an initializer without threading it
+    # through every call site. Per-instance `throttle:` still wins.
+    attr_accessor :default_throttle
+  end
+
+  # Yields the module for block-style configuration.
+  #
+  #   XeroKiwi.configure do |c|
+  #     c.default_throttle = XeroKiwi::Throttle::RedisTokenBucket.new(...)
+  #   end
+  def self.configure
+    yield self
+  end
 end

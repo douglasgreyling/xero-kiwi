@@ -197,6 +197,55 @@ RSpec.describe XeroKiwi::Client do
 
       expect(stub).not_to have_been_requested
     end
+
+    context "with a module-level default_throttle" do
+      before { XeroKiwi.default_throttle = limiter }
+      after  { XeroKiwi.default_throttle = nil }
+
+      let(:default_client) do
+        described_class.new(
+          access_token:  access_token,
+          retry_options: { interval: 0, interval_randomness: 0, backoff_factor: 1, max: 2 }
+        )
+      end
+
+      it "applies the default limiter when no throttle: kwarg is passed" do
+        stub_request(:get, organisation_endpoint)
+          .to_return(status: 200, body: '{"Organisations":[]}', headers: json_headers)
+
+        default_client.organisation(tenant_id)
+
+        expect(limiter).to have_received(:acquire).with(tenant_id).once
+      end
+
+      it "lets an explicit throttle: kwarg override the default" do
+        override = instance_double(XeroKiwi::Throttle::NullLimiter, acquire: nil)
+        overriding_client = described_class.new(
+          access_token:  access_token,
+          throttle:      override,
+          retry_options: { interval: 0, interval_randomness: 0, backoff_factor: 1, max: 2 }
+        )
+        stub_request(:get, organisation_endpoint)
+          .to_return(status: 200, body: '{"Organisations":[]}', headers: json_headers)
+
+        overriding_client.organisation(tenant_id)
+
+        expect(override).to have_received(:acquire).with(tenant_id).once
+        expect(limiter).not_to have_received(:acquire)
+      end
+    end
+  end
+
+  describe ".configure" do
+    after { XeroKiwi.default_throttle = nil }
+
+    it "yields the module so callers can set default_throttle" do
+      limiter = instance_double(XeroKiwi::Throttle::NullLimiter)
+
+      XeroKiwi.configure { |c| c.default_throttle = limiter }
+
+      expect(XeroKiwi.default_throttle).to be(limiter)
+    end
   end
 
   describe "#organisation" do

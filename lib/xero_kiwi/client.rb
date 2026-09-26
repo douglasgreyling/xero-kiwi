@@ -64,13 +64,11 @@ module XeroKiwi
       adapter: nil,
       user_agent: DEFAULT_USER_AGENT,
       retry_options: {},
-      throttle: nil
+      throttle: nil,
+      page_size: nil,
+      retain_raw: false
     )
-      @token            = Token.new(
-        access_token:  access_token,
-        refresh_token: refresh_token,
-        expires_at:    expires_at
-      )
+      @token            = Token.new(access_token: access_token, refresh_token: refresh_token, expires_at: expires_at)
       @client_id        = client_id
       @client_secret    = client_secret
       @on_token_refresh = on_token_refresh
@@ -78,7 +76,22 @@ module XeroKiwi
       @user_agent       = user_agent
       @retry_options    = DEFAULT_RETRY_OPTIONS.merge(retry_options)
       @throttle         = throttle || XeroKiwi.default_throttle || Throttle::NullLimiter.new
+      @page_size        = page_size
+      @retain_raw       = retain_raw
+      @rate_limits      = RateLimitStore.new
       @refresh_mutex    = Mutex.new
+    end
+
+    # Quota remaining for a tenant, blended from Xero's last reported headers
+    # and the configured throttle bucket — whichever is stricter. See
+    # XeroKiwi::RateLimit.
+    #
+    #   break if client.rate_limit(tid).day_below?(1_000)
+    def rate_limit(tenant_id)
+      tid = extract_tenant_id(tenant_id)
+      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+
+      RateLimit.new(reported: @rate_limits.fetch(tid), configured: configured_rate_limit(tid))
     end
 
     # Fetches the list of tenants the current access token has access to.
@@ -101,14 +114,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Organisation") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Organisation.from_response(response.body)
+        Accounting::Organisation.from_response(response.body, retain_raw: @retain_raw)
       end
     end
 
     # Fetches the Users for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/users
-    def users(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def users(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/Users",
         tenant_id:      tenant_id,
@@ -116,21 +129,32 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    # Yields every User across all pages, driving `#users` with `page:` until
-    # an empty page signals the end. Returns an Enumerator when no block is
-    # given.
-    def each_user(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_user, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every User across all pages, driving `#users` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_user(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_user, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:users, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_user_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
     end
 
-    # Fetches a single User by ID for the given tenant. Accepts a tenant-id
-    # string or a XeroKiwi::Connection (we use its tenant_id).
+    # Same walk as `#each_user`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_user_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_user_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:users, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
+    end
+
+    # Fetches a single User by ID for the given tenant. Accepts a
+    # tenant-id string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/users
     def user(tenant_id, user_id)
       tid = extract_tenant_id(tenant_id)
@@ -141,14 +165,18 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Users/#{user_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::User.from_response(response.body).first
+        Accounting::User.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Contacts for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/contacts
-    def contacts(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def contacts(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, page: nil, modified_since: nil)
+      extra_params = {}
+
+      extra_params["includeArchived"] = include_archived unless include_archived.nil?
+
       list_request(
         path:           "/api.xro/2.0/Contacts",
         tenant_id:      tenant_id,
@@ -156,18 +184,33 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
-        modified_since: modified_since
+        page_size:      page_size,
+        modified_since: modified_since,
+        extra_params:   extra_params
       )
     end
 
-    def each_contact(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_contact, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Contact across all pages, driving `#contacts` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_contact(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_contact, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:contacts, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_contact_page(tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
     end
 
-    # Fetches a single Contact by ID for the given tenant. Accepts a tenant-id
-    # string or a XeroKiwi::Connection (we use its tenant_id).
+    # Same walk as `#each_contact`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_contact_page(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_contact_page, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:contacts, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since, &block)
+    end
+
+    # Fetches a single Contact by ID for the given tenant. Accepts a
+    # tenant-id string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/contacts
     def contact(tenant_id, contact_id)
       tid = extract_tenant_id(tenant_id)
@@ -178,14 +221,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Contacts/#{contact_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Contact.from_response(response.body).first
+        Accounting::Contact.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Contact Groups for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/contactgroups
-    def contact_groups(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def contact_groups(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/ContactGroups",
         tenant_id:      tenant_id,
@@ -193,14 +236,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_contact_group(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_contact_group, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Contact Group across all pages, driving `#contact_groups` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_contact_group(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_contact_group, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:contact_groups, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_contact_group_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_contact_group`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_contact_group_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_contact_group_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:contact_groups, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Contact Group by ID for the given tenant. Accepts a
@@ -215,14 +272,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/ContactGroups/#{contact_group_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::ContactGroup.from_response(response.body).first
+        Accounting::ContactGroup.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Prepayments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/prepayments
-    def prepayments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def prepayments(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/Prepayments",
         tenant_id:      tenant_id,
@@ -230,14 +287,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_prepayment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_prepayment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Prepayment across all pages, driving `#prepayments` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_prepayment(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_prepayment, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:prepayments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_prepayment_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_prepayment`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_prepayment_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_prepayment_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:prepayments, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Prepayment by ID for the given tenant. Accepts a
@@ -252,14 +323,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Prepayments/#{prepayment_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Prepayment.from_response(response.body).first
+        Accounting::Prepayment.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Credit Notes for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/creditnotes
-    def credit_notes(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def credit_notes(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/CreditNotes",
         tenant_id:      tenant_id,
@@ -267,14 +338,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_credit_note(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_credit_note, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Credit Note across all pages, driving `#credit_notes` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_credit_note(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_credit_note, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:credit_notes, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_credit_note_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_credit_note`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_credit_note_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_credit_note_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:credit_notes, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Credit Note by ID for the given tenant. Accepts a
@@ -289,14 +374,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/CreditNotes/#{credit_note_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::CreditNote.from_response(response.body).first
+        Accounting::CreditNote.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Overpayments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/overpayments
-    def overpayments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def overpayments(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/Overpayments",
         tenant_id:      tenant_id,
@@ -304,14 +389,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_overpayment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_overpayment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Overpayment across all pages, driving `#overpayments` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_overpayment(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_overpayment, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:overpayments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_overpayment_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_overpayment`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_overpayment_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_overpayment_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:overpayments, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Overpayment by ID for the given tenant. Accepts a
@@ -326,14 +425,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Overpayments/#{overpayment_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Overpayment.from_response(response.body).first
+        Accounting::Overpayment.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Payments for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/payments
-    def payments(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def payments(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/Payments",
         tenant_id:      tenant_id,
@@ -341,14 +440,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_payment(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_payment, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Payment across all pages, driving `#payments` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_payment(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_payment, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:payments, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_payment_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_payment`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_payment_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_payment_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:payments, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Payment by ID for the given tenant. Accepts a
@@ -363,14 +476,14 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Payments/#{payment_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Payment.from_response(response.body).first
+        Accounting::Payment.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
     # Fetches the Invoices for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/invoices
-    def invoices(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def invoices(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/Invoices",
         tenant_id:      tenant_id,
@@ -378,14 +491,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_invoice(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_invoice, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Invoice across all pages, driving `#invoices` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_invoice(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_invoice, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:invoices, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_invoice_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_invoice`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_invoice_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_invoice_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:invoices, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Invoice by ID for the given tenant. Accepts a
@@ -400,7 +527,7 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/Invoices/#{invoice_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::Invoice.from_response(response.body).first
+        Accounting::Invoice.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
@@ -423,7 +550,7 @@ module XeroKiwi
     # Fetches the Branding Themes for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/brandingthemes
-    def branding_themes(tenant_id, where: nil, order: nil, page: nil, modified_since: nil)
+    def branding_themes(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
       list_request(
         path:           "/api.xro/2.0/BrandingThemes",
         tenant_id:      tenant_id,
@@ -431,14 +558,28 @@ module XeroKiwi
         where:          where,
         order:          order,
         page:           page,
+        page_size:      page_size,
         modified_since: modified_since
       )
     end
 
-    def each_branding_theme(tenant_id, where: nil, order: nil, modified_since: nil, &block)
-      return to_enum(:each_branding_theme, tenant_id, where: where, order: order, modified_since: modified_since) unless block
+    # Yields every Branding Theme across all pages, driving `#branding_themes` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_branding_theme(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_branding_theme, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:branding_themes, tenant_id, where: where, order: order, modified_since: modified_since, &block)
+      each_branding_theme_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_branding_theme`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_branding_theme_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_branding_theme_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:branding_themes, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Branding Theme by ID for the given tenant. Accepts a
@@ -453,7 +594,58 @@ module XeroKiwi
         response = http.get("/api.xro/2.0/BrandingThemes/#{branding_theme_id}") do |req|
           req.headers["Xero-Tenant-Id"] = tid
         end
-        Accounting::BrandingTheme.from_response(response.body).first
+        Accounting::BrandingTheme.from_response(response.body, retain_raw: @retain_raw).first
+      end
+    end
+
+    # Fetches the Tracking Categories for the given tenant. Accepts a tenant-id
+    # string or a XeroKiwi::Connection (we use its tenant_id).
+    # See: https://developer.xero.com/documentation/api/accounting/trackingcategories
+    def tracking_categories(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
+      list_request(
+        path:           "/api.xro/2.0/TrackingCategories",
+        tenant_id:      tenant_id,
+        resource_class: Accounting::TrackingCategory,
+        where:          where,
+        order:          order,
+        page:           page,
+        page_size:      page_size,
+        modified_since: modified_since
+      )
+    end
+
+    # Yields every Tracking Category across all pages, driving `#tracking_categories` with
+    # `page:` until an empty or short page signals the end. Returns an
+    # Enumerator when no block is given.
+    def each_tracking_category(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_tracking_category, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      each_tracking_category_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+    end
+
+    # Same walk as `#each_tracking_category`, but yields each XeroKiwi::Page rather
+    # than its items. Pair `page.page` with `start_page:` to make a sync
+    # resumable: record the page number in the same transaction that stores
+    # the rows, and a crash can't leave a marker ahead of the data.
+    def each_tracking_category_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_tracking_category_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+
+      walk_pages(:tracking_categories, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
+    end
+
+    # Fetches a single Tracking Category by ID for the given tenant. Accepts a
+    # tenant-id string or a XeroKiwi::Connection (we use its tenant_id).
+    # See: https://developer.xero.com/documentation/api/accounting/trackingcategories
+    def tracking_category(tenant_id, tracking_category_id)
+      tid = extract_tenant_id(tenant_id)
+      raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
+      raise ArgumentError, "tracking_category_id is required" if tracking_category_id.nil? || tracking_category_id.to_s.empty?
+
+      with_authenticated_request do
+        response = http.get("/api.xro/2.0/TrackingCategories/#{tracking_category_id}") do |req|
+          req.headers["Xero-Tenant-Id"] = tid
+        end
+        Accounting::TrackingCategory.from_response(response.body, retain_raw: @retain_raw).first
       end
     end
 
@@ -505,15 +697,12 @@ module XeroKiwi
     # `modified_since` to the `If-Modified-Since` header. Wraps the response
     # in a XeroKiwi::Page.
     def list_request(path:, tenant_id:, resource_class:, # rubocop:disable Metrics/AbcSize
-                     where:, order:, page:, modified_since:)
+                     where:, order:, page:, page_size:, modified_since:, extra_params: {})
       tid = extract_tenant_id(tenant_id)
       raise ArgumentError, "tenant_id is required" if tid.nil? || tid.empty?
 
-      fields          = resource_class.query_fields
-      params          = {}
-      params["where"] = Query::Filter.compile(where, fields: fields) if where
-      params["order"] = Query::Order.compile(order, fields: fields) if order
-      params["page"]  = page if page
+      params = list_params(resource_class, where: where, order: order, page: page, page_size: page_size)
+      params = params.merge(extra_params)
 
       with_authenticated_request do
         response = http.get(path, params) do |req|
@@ -524,35 +713,61 @@ module XeroKiwi
       end
     end
 
+    def list_params(resource_class, where:, order:, page:, page_size:)
+      size   = page_size || @page_size
+      fields = resource_class.query_fields
+      params = {}
+
+      params["where"]    = Query::Filter.compile(where, fields: fields) if where
+      params["order"]    = Query::Order.compile(order, fields: fields) if order
+      params["page"]     = page if page
+      params["pageSize"] = size if size
+      params
+    end
+
     def build_page(response, resource_class)
       return Page.new(items: []) if response.status == 304
 
-      items = resource_class.from_response(response.body)
-      pag   = response.body.is_a?(Hash) ? response.body["pagination"] : nil
+      items    = resource_class.from_response(response.body, retain_raw: @retain_raw)
+      pag      = response.body.is_a?(Hash) ? response.body["pagination"] : nil
+      reported = pag&.dig("pageSize")
+      counted  = pag&.dig("itemCount")
 
       Page.new(
-        items:       items,
-        page:        pag&.dig("page")      || 1,
-        page_size:   pag&.dig("pageSize")  || items.size,
-        item_count:  pag&.dig("itemCount") || items.size,
-        total_count: pag&.dig("itemCount")
+        items:              items,
+        page:               pag&.dig("page") || 1,
+        page_size:          reported || items.size,
+        item_count:         counted  || items.size,
+        total_count:        counted,
+        reported_page_size: reported
       )
     end
 
-    # Shared lazy page-walker powering all `each_*` helpers. Uses the given
-    # list method repeatedly, incrementing `page:` until an empty page or a
-    # partially-filled page signals the end.
-    def walk_pages(list_method, tenant_id, where:, order:, modified_since:, &)
-      (1..Float::INFINITY).lazy.each do |p|
-        pg = send(list_method, tenant_id,
-                  where:          where,
-                  order:          order,
-                  page:           p,
-                  modified_since: modified_since)
+    # Shared lazy page-walker powering every `each_*` and `each_*_page`
+    # helper. Calls the given list method repeatedly from `start_page`,
+    # yielding whole Pages, until a page comes back empty or short.
+    #
+    # "Short" is measured against Xero's own stated page size when the
+    # response carried a pagination envelope, and otherwise against the
+    # largest page seen so far in this walk. Deliberately NOT against the
+    # requested page size: Xero clamps a request above an endpoint's maximum,
+    # so asking for 2000 where the cap is 1000 would make the very first page
+    # look short and end the walk after one page — silently truncating the
+    # sync. A measured yardstick can't do that. The cost is one extra request
+    # when the whole result fits in a single page and no envelope came back,
+    # since there's then nothing to compare against.
+    def walk_pages(list_method, tenant_id, start_page:, **)
+      largest_seen = nil
+
+      (start_page..Float::INFINITY).lazy.each do |p|
+        pg = send(list_method, tenant_id, page: p, **)
         break if pg.empty?
 
-        pg.each(&)
-        break if pg.page_size && pg.size < pg.page_size
+        yield pg
+
+        largest_seen = pg.size if largest_seen.nil? || pg.size > largest_seen
+        yardstick    = pg.reported_page_size || largest_seen
+        break if pg.size < yardstick
       end
     end
 
@@ -619,6 +834,18 @@ module XeroKiwi
       )
     end
 
+    # Nil unless the limiter implements the optional `#remaining` part of the
+    # contract, and nil again if it couldn't answer (e.g. Redis is down and
+    # the bucket failed open).
+    def configured_rate_limit(tid)
+      return nil unless @throttle.respond_to?(:remaining)
+
+      counts = @throttle.remaining(tid)
+      return nil if counts.nil?
+
+      RateLimit::Configured.new(day: counts[:day], minute: counts[:minute])
+    end
+
     def extract_connection_id(value)
       value.is_a?(Connection) ? value.id : value
     end
@@ -638,10 +865,14 @@ module XeroKiwi
     #      a XeroKiwi exception, *after* retries have been exhausted.
     #   2. Retry — retries on 429/503 (respecting Retry-After) and on transport
     #      exceptions.
-    #   3. Throttle — blocks before each attempt until a per-tenant token is
+    #   3. RateLimitCapture — records Xero's quota headers. Below Retry so
+    #      every attempt refreshes them, and below ResponseHandler so an error
+    #      response is read before it's turned into an exception — a 429 is
+    #      exactly when those headers matter most.
+    #   4. Throttle — blocks before each attempt until a per-tenant token is
     #      available. Below Retry so every retry also consumes a token.
-    #   4. JSON — parses the response body so handlers downstream get a Hash.
-    #   5. Adapter — actually makes the HTTP call.
+    #   5. JSON — parses the response body so handlers downstream get a Hash.
+    #   6. Adapter — actually makes the HTTP call.
     #
     # Putting ResponseHandler outside Retry is the key trick: it means a 429
     # gets retried by Faraday before we ever raise RateLimitError, and the
@@ -650,6 +881,7 @@ module XeroKiwi
       Faraday.new(url: BASE_URL) do |f|
         f.use ResponseHandler
         f.request :retry, @retry_options
+        f.use RateLimitCapture, @rate_limits
         f.use Throttle::Middleware, @throttle
         f.response :json, content_type: /\bjson/
         f.adapter(@adapter || Faraday.default_adapter)
@@ -657,6 +889,62 @@ module XeroKiwi
         f.headers["Authorization"] = "Bearer #{@token.access_token}"
         f.headers["Accept"]        = "application/json"
         f.headers["User-Agent"]    = @user_agent
+      end
+    end
+
+    # Per-tenant store of the rate-limit figures Xero last reported. Written
+    # from the Faraday middleware (any thread running a request) and read by
+    # Client#rate_limit, so every access takes the mutex.
+    class RateLimitStore
+      def initialize
+        @mutex     = Mutex.new
+        @by_tenant = {}
+      end
+
+      def record(tenant_id, day:, minute:, app_minute:)
+        return if day.nil? && minute.nil?
+
+        reported                                   = RateLimit::Reported.new(day: day, minute: minute, app_minute: app_minute)
+        @mutex.synchronize { @by_tenant[tenant_id] = reported }
+      end
+
+      def fetch(tenant_id)
+        @mutex.synchronize { @by_tenant[tenant_id] }
+      end
+    end
+
+    # Faraday middleware that records Xero's rate-limit headers per tenant.
+    # Untenanted calls (/connections, OAuth) have no bucket to attribute the
+    # figures to and are skipped.
+    #
+    # See: https://developer.xero.com/documentation/guides/oauth2/limits
+    class RateLimitCapture < Faraday::Middleware
+      TENANT_HEADER = "Xero-Tenant-Id"
+
+      def initialize(app, store)
+        super(app)
+        @store = store
+      end
+
+      def on_complete(env)
+        tenant_id = env.request_headers[TENANT_HEADER]
+        return if tenant_id.nil? || tenant_id.empty?
+
+        headers = env.response_headers
+        return if headers.nil?
+
+        @store.record(
+          tenant_id,
+          day:        to_i_or_nil(headers["X-DayLimit-Remaining"]),
+          minute:     to_i_or_nil(headers["X-MinLimit-Remaining"]),
+          app_minute: to_i_or_nil(headers["X-AppMinLimit-Remaining"])
+        )
+      end
+
+      private
+
+      def to_i_or_nil(value)
+        value.nil? || value.to_s.empty? ? nil : value.to_i
       end
     end
 

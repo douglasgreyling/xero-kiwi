@@ -386,14 +386,40 @@ not cosmetic:
 | One address | `{"Address" => {…}}` | `[{…}]` |
 | Several addresses | `{"Address" => [{…}, {…}]}` | `[{…}, {…}]` |
 
-So a reader that digs `("Organisations", "Organisation", "Addresses",
-"Address")` returns nil against anything kiwi produces, whether you store
-`raw` or `to_h`. No client setting changes this — the old shape is an
-artefact of an XML parse kiwi doesn't do.
+The single-child collapse is the one that catches people: under XML a
+contact with one person parses to a Hash and a contact with two parses to
+an Array, from the same endpoint. Code written against that has a
+normalising step somewhere, whether or not its author knew why.
 
-Plan for it: promote the fields those readers need to real columns, and
-use `raw` for the backfill. `raw` is the true payload, so it preserves
-everything you need to populate them.
+No client setting reproduces these shapes — they're artefacts of an XML
+parse kiwi doesn't do. But the remedy isn't the same everywhere, and it's
+worth sorting your readers into two piles before planning the work.
+
+**Readers that dig the XML-only structure have to change.** Something like
+`dig("Organisations", "Organisation", "Addresses", "Address")` returns nil
+against anything kiwi produces, whether you store `raw` or `to_h`.
+Promote the fields those readers need to real columns and use `raw` for
+the backfill — it's the true payload, so it carries everything required to
+populate them.
+
+**Readers that already normalise usually survive untouched.** A reader
+doing `[value].flatten.compact` handles the Hash case, the Array case and
+nil identically, so a JSON array flows straight through. If the keys it
+reads are the same in both representations, only the *writer* changes:
+stop unwrapping, store the array. Existing rows stay readable, and you
+skip a migration entirely.
+
+Type coercion is usually fine in that second pile too. XML gives you
+strings — `"false"` rather than `false` — and if the reader hands that to
+something like ActiveModel's boolean cast, both the old string and the new
+real boolean land on the same value.
+
+One piece of luck worth knowing about: the two piles tend to fail
+differently. A `dig` that misses returns nil and writes a blank record
+quietly. Code that assumed a Hash, such as `Array#to_h` on what is now a
+list, raises `TypeError` on the first record with data in it. The noisy
+failures are the ones you can trust to find themselves — budget your
+review time for the silent ones.
 
 ## What the client gives you
 

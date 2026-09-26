@@ -14,12 +14,19 @@ module XeroKiwi
 
     attr_reader :items, :page, :page_size, :item_count, :total_count
 
-    def initialize(items:, page: nil, page_size: nil, item_count: nil, total_count: nil)
-      @items       = items
-      @page        = page
-      @page_size   = page_size
-      @item_count  = item_count
-      @total_count = total_count
+    # The page size Xero actually stated in its `pagination` envelope, or nil
+    # when the response carried none. `page_size` falls back to the number of
+    # items received, which makes it useless for "was this page short?" — this
+    # reader keeps the distinction the page-walker needs.
+    attr_reader :reported_page_size
+
+    def initialize(items:, page: nil, page_size: nil, item_count: nil, total_count: nil, reported_page_size: nil)
+      @items              = items
+      @page               = page
+      @page_size          = page_size
+      @item_count         = item_count
+      @total_count        = total_count
+      @reported_page_size = reported_page_size
     end
 
     def each(&block)

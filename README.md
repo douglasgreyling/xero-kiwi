@@ -23,9 +23,16 @@ problem.
   themes, and nested objects like addresses, phones, external links, and payment
   terms — all wrapped in proper value objects.
 - **Querying**: every list endpoint accepts `where` / `order` / `page` /
-  `modified_since`, with a typed hash DSL (`where: { status: "AUTHORISED" }`)
-  and raw-string escape hatches. Lazy `each_<resource>` helpers walk every
-  page for whole-tenant scans and incremental syncs.
+  `page_size` / `modified_since`, with a typed hash DSL
+  (`where: { status: "AUTHORISED" }`) and raw-string escape hatches. Lazy
+  `each_<resource>` helpers walk every page for whole-tenant scans and
+  incremental syncs.
+- **Resumable syncs**: `each_<resource>_page` yields whole pages so you can
+  record the page number alongside the rows, and `start_page:` picks the walk
+  back up where it stopped.
+- **Quota introspection**: `client.rate_limit(tenant_id)` reports how much of
+  a tenant's daily and per-minute allowance is left, taking the stricter of
+  what Xero reported and what your own throttle bucket holds.
 
 ## Installation
 
@@ -71,12 +78,13 @@ below.
 | [Overpayments](docs/accounting/overpayment.md) | Listing and fetching overpayments, the `XeroKiwi::Accounting::Overpayment` resource |
 | [Prepayments](docs/accounting/prepayment.md) | Listing and fetching prepayments, the `XeroKiwi::Accounting::Prepayment` resource, LineItem |
 | [Branding Themes](docs/accounting/branding-theme.md) | Listing and fetching branding themes, the `XeroKiwi::Accounting::BrandingTheme` resource |
+| [Tracking Categories](docs/accounting/tracking-category.md) | Listing and fetching tracking categories, the `TrackingCategory` / `TrackingOption` / `Tracking` resources |
 | [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
 | [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
 | [Retries and rate limits](docs/retries-and-rate-limits.md) | How Xero Kiwi handles 429s and transient failures, customising the retry policy |
 | [Throttling](docs/throttling.md) | Redis-backed token bucket for proactive rate-limit coordination across multiple workers |
-| [Querying](docs/querying.md) | `where` / `order` / `page` / `modified_since` on list endpoints, the `Page` return type, and `each_*` lazy pagination helpers |
+| [Querying](docs/querying.md) | `where` / `order` / `page` / `page_size` / `include_archived` / `modified_since` on list endpoints, the `Page` return type, `each_*` and `each_*_page` helpers, and `start_page:` resumability |
 
 ## Status
 

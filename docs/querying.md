@@ -130,6 +130,28 @@ client.invoices(tenant, page: 2).page_size     # => 100
 client.invoices(tenant, page: 2).item_count    # total-on-this-page
 ```
 
+## `page_size:` — how many per page
+
+Maps to Xero's `pageSize` query param. Xero's own default is 100 and its
+maximum is 1,000 on most paged endpoints.
+
+Set it once on the client and every call inherits it; override per call
+where you need something different.
+
+```ruby
+client = XeroKiwi::Client.new(access_token: token, page_size: 1_000)
+
+client.invoices(tenant)                  # pageSize=1000
+client.invoices(tenant, page_size: 100)  # this call only
+```
+
+Leave it unset and kiwi omits the parameter entirely, so Xero applies its
+own default.
+
+This is worth setting for any full-tenant sync. At 100 per page a
+50,000-invoice tenant costs ~500 API calls; at 1,000 it costs ~50, against
+a daily limit of 5,000.
+
 ### Walking every page — `each_<resource>`
 
 For incremental syncs or whole-tenant scans, use the `each_*` helpers.
@@ -150,7 +172,50 @@ client.each_invoice(tenant, order: { date: :desc })
 
 Available for every listable resource: `each_user`, `each_contact`,
 `each_contact_group`, `each_invoice`, `each_credit_note`, `each_payment`,
-`each_prepayment`, `each_overpayment`, `each_branding_theme`.
+`each_prepayment`, `each_overpayment`, `each_branding_theme`,
+`each_tracking_category`.
+
+### Walking pages instead of items — `each_<resource>_page`
+
+Same walk, but each yield is a whole `Page` rather than one item. Use it
+when you need the page number — which is what makes a sync resumable.
+
+```ruby
+client.each_invoice_page(tenant, page_size: 1_000) do |page|
+  Invoice.upsert_all(page.map(&:to_h))
+  cursor.update!(invoices: page.page)   # same transaction as the upsert
+end
+```
+
+Recording the page number in the same transaction that stores the rows
+matters: a marker written when the response lands, before the rows are
+saved, can survive a crash that the rows don't — and the next run then
+skips a page it never actually imported.
+
+### Resuming — `start_page:`
+
+Both `each_*` and `each_*_page` accept `start_page:` (default 1), so a
+resumed run picks up where the last one stopped.
+
+```ruby
+client.each_invoice_page(tenant, start_page: cursor.invoices + 1) do |page|
+  …
+end
+```
+
+### How the walk knows when to stop
+
+It stops on an empty page, or on a page shorter than a full one. "Full" is
+measured against Xero's stated page size when the response carries a
+`pagination` envelope, and otherwise against the largest page seen so far
+in that walk.
+
+It is deliberately **not** measured against the `page_size:` you asked
+for. Xero clamps a request above an endpoint's maximum, so a walk that
+asked for 2,000 where the cap is 1,000 would see its very first page as
+short and stop after one page — silently truncating the sync. The cost of
+measuring instead of assuming is one extra request when the whole result
+fits in a single page and no envelope came back.
 
 ## `modified_since:` — incremental sync
 
@@ -168,6 +233,25 @@ exception, no special flag. An empty page after `modified_since:` is
 indistinguishable from a filter that matched nothing (intentional — the
 caller can treat them identically).
 
+## `include_archived:` — archived contacts
+
+Contacts only. Maps to Xero's `includeArchived` query param, which returns
+archived contacts **alongside** active ones in the same pass.
+
+```ruby
+client.contacts(tenant, include_archived: true)
+client.each_contact(tenant, include_archived: true) { |contact| … }
+```
+
+This is not the same as filtering on `contact_status`. A
+`where: { contact_status: "ARCHIVED" }` returns *only* archived contacts;
+`include_archived: true` returns both kinds together, which is what you
+want when mirroring a tenant's full contact list.
+
+It matters beyond contacts themselves: Xero keeps serving archived
+contacts as members of contact groups, so without this you can't tell
+which group members are archived locally.
+
 ## Combining everything
 
 Mix and match freely:
@@ -178,6 +262,7 @@ client.invoices(
   where:          { status: "AUTHORISED", contact: { contact_id: "abc-123" } },
   order:          { date: :desc },
   page:           1,
+  page_size:      1_000,
   modified_since: last_sync_at
 )
 ```

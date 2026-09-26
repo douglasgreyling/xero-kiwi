@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-26
+
+The sync-support release: everything needed to drive a full-tenant sync through kiwi rather than around it.
+
+### Added
+
+- **`page_size:`** on every list method, plus a client-level default (`Client.new(page_size: 1_000)`) that per-call overrides beat. Maps to Xero's `pageSize`. Unset means the parameter is omitted and Xero applies its own default of 100, so existing callers are unaffected. Worth setting for any full sync — at 100 per page a 50,000-invoice tenant costs ~500 API calls against a 5,000/day limit; at 1,000 it costs ~50.
+- **`each_<resource>_page`** for all ten list resources, yielding a whole `XeroKiwi::Page` rather than its items — so the page number reaches the caller, which is what a resumable sync needs to record.
+- **`start_page:`** on both `each_<resource>` and `each_<resource>_page` (default 1), so a resumed run picks up where the last one stopped.
+- **`include_archived:`** on `contacts` / `each_contact` / `each_contact_page`. A distinct query parameter, not a `where` filter: filtering on `contact_status` returns *only* archived contacts, where this returns both kinds in one pass.
+- **`Resource#raw`** — Xero's untouched response hash, behind `Client.new(retain_raw: true)`. Off by default because retaining it roughly doubles the memory of a large page. Populated on resources built directly from a response, not on nested objects; the top-level hash already holds every nested payload, so `contact.raw["ContactPersons"]` gets there. Note `#raw` is not `#to_h` — `to_h` is a snake_case projection with different keys and different nesting.
+- **`client.rate_limit(tenant_id)`** returning a `XeroKiwi::RateLimit`. Blends what Xero's headers last reported for that tenant with what the configured throttle bucket holds, and reports **the stricter of the two** — a configured limit is a ceiling you chose, a reported limit is reality. Exposes `day_remaining`, `minute_remaining`, `day_below?`, `minute_below?`, `day_source`, `minute_source`, `reported`, `configured` and `known?`. Headers are captured on every response including errors, since a 429 is when they matter most. With nothing known, `day_below?` returns false — not knowing isn't a reason to halt a sync.
+- **`RedisTokenBucket#remaining(key)`** — current token counts without spending one, via a separate read-only Lua script. `#remaining` is an optional part of the limiter contract; `Client` checks `respond_to?` first, so a custom limiter written against 0.2.0 keeps working.
+- **Tracking categories**: `client.tracking_categories`, `client.tracking_category`, `each_tracking_category` and `each_tracking_category_page`, with a new `Accounting::TrackingOption` for the nested `Options` array. See `docs/accounting/tracking-category.md`.
+- `XeroKiwi::Page#reported_page_size` — the page size Xero actually stated, or nil when the response carried no `pagination` envelope. `page_size` keeps its existing fallback to the item count.
+
+### Breaking
+
+- **`Accounting::TrackingCategory` is now the `/TrackingCategories` endpoint resource** (`tracking_category_id`, `name`, `status`, `options`). The flattened category-and-chosen-option pair nested on line items and contacts — which this class used to model — is now **`Accounting::Tracking`**, matching Xero's own field name for it. Update any reference to `XeroKiwi::Accounting::TrackingCategory` that came from `line_item.tracking` or a contact's tracking collections. The two shapes share a name and one ID field and nothing else, which is why they're now separate classes.
+
+### Fixed
+
+- Page walks no longer fetch a redundant empty page. `build_page` falls back to the item count when Xero returns no `pagination` envelope, which made the walker's short-page check compare a number to itself (`items.size < items.size`) and never fire, leaving `empty?` as the only way to stop. The walk now measures against Xero's stated page size when there is one and the largest page seen so far otherwise — deliberately **not** against the requested `page_size`, since Xero clamps a request above an endpoint's maximum and a walk that asked for 2,000 where the cap is 1,000 would have seen page 1 as short and truncated the sync.
+
+### Changed
+
+- Widened the `jwt` runtime constraint to `>= 2.7, < 4.0` and `redis` to `>= 5.0, < 7.0`. Both majors (`jwt` 3.x, `redis` 6.x) pass the full suite, including the Lua-backed throttle specs against a real Redis. Widening rather than bumping means a host app on `redis` 5 (Sidekiq, Rails cache) isn't forced to move in lockstep with this gem.
+- Dropped the unused `mock_redis` development dependency. The throttle's bucket maths runs as a server-side Lua script, so the specs have always used a real Redis — `mock_redis` was only ever named in the comments explaining why it couldn't be used, and its `redis (~> 5)` runtime pin blocked resolving `redis` 6.
+
 ## [0.4.0] - 2026-04-20
 
 ### Added

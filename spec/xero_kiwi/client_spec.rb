@@ -219,7 +219,7 @@ RSpec.describe XeroKiwi::Client do
       end
 
       it "lets an explicit throttle: kwarg override the default" do
-        override = instance_double(XeroKiwi::Throttle::NullLimiter, acquire: nil)
+        override          = instance_double(XeroKiwi::Throttle::NullLimiter, acquire: nil)
         overriding_client = described_class.new(
           access_token:  access_token,
           throttle:      override,

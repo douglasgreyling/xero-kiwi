@@ -36,9 +36,16 @@ problem.
   themes, and nested objects like addresses, phones, external links, and payment
   terms — all wrapped in proper value objects.
 - **Querying**: every list endpoint accepts `where` / `order` / `page` /
-  `modified_since`, with a typed hash DSL (`where: { status: "AUTHORISED" }`)
-  and raw-string escape hatches. Lazy `each_<resource>` helpers walk every
-  page for whole-tenant scans and incremental syncs.
+  `page_size` / `modified_since`, with a typed hash DSL
+  (`where: { status: "AUTHORISED" }`) and raw-string escape hatches. Lazy
+  `each_<resource>` helpers walk every page for whole-tenant scans and
+  incremental syncs.
+- **Resumable syncs**: `each_<resource>_page` yields whole pages so you can
+  record the page number alongside the rows, and `start_page:` picks the walk
+  back up where it stopped.
+- **Quota introspection**: `client.rate_limit(tenant_id)` reports how much of
+  a tenant's daily and per-minute allowance is left, taking the stricter of
+  what Xero reported and what your own throttle bucket holds.
 
 ## Installation
 
@@ -84,12 +91,13 @@ below.
 | [Overpayments](docs/accounting/overpayment.md) | Listing and fetching overpayments, the `XeroKiwi::Accounting::Overpayment` resource |
 | [Prepayments](docs/accounting/prepayment.md) | Listing and fetching prepayments, the `XeroKiwi::Accounting::Prepayment` resource, LineItem |
 | [Branding Themes](docs/accounting/branding-theme.md) | Listing and fetching branding themes, the `XeroKiwi::Accounting::BrandingTheme` resource |
+| [Tracking Categories](docs/accounting/tracking-category.md) | Listing and fetching tracking categories, the `TrackingCategory` / `TrackingOption` / `Tracking` resources |
 | [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
 | [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |
 | [Retries and rate limits](docs/retries-and-rate-limits.md) | How Xero Kiwi handles 429s and transient failures, customising the retry policy |
 | [Throttling](docs/throttling.md) | Redis-backed token bucket for proactive rate-limit coordination across multiple workers |
-| [Querying](docs/querying.md) | `where` / `order` / `page` / `modified_since` on list endpoints, the `Page` return type, and `each_*` lazy pagination helpers |
+| [Querying](docs/querying.md) | `where` / `order` / `page` / `page_size` / `include_archived` / `modified_since` on list endpoints, the `Page` return type, `each_*` and `each_*_page` helpers, and `start_page:` resumability |
 
 ## Status
 
@@ -320,6 +328,40 @@ you. See [Tokens](tokens.md) for the full refresh story.
 | `adapter:` | `Symbol` / Faraday adapter | No | `Faraday.default_adapter` | The Faraday adapter to use. Override to swap in `:net_http_persistent`, `:typhoeus`, or a test adapter. |
 | `user_agent:` | `String` | No | `"XeroKiwi/<version>"` | Sent as the `User-Agent` header on every request. |
 | `retry_options:` | `Hash` | No | See [retries and rate limits](retries-and-rate-limits.md) | Overrides for the `faraday-retry` configuration. Merged into the defaults. |
+| `throttle:` | Limiter | No | `XeroKiwi.default_throttle`, else none | Proactive per-tenant rate limiting. See [Throttling](throttling.md). |
+| `page_size:` | `Integer` | No | `nil` (Xero's own default of 100) | Default `pageSize` for every list call. Per-call `page_size:` overrides it. See [Querying](querying.md). |
+| `retain_raw:` | `Boolean` | No | `false` | Keep Xero's untouched response hash on each resource, readable via `#raw`. See below. |
+
+### `retain_raw:` and `#raw`
+
+By default a resource hydrates the fields kiwi models and discards the
+original payload. Turn `retain_raw` on and each resource built directly
+from a response keeps that payload:
+
+```ruby
+client  = XeroKiwi::Client.new(access_token: token, retain_raw: true)
+contact = client.contact(tenant, contact_id)
+
+contact.raw
+# => {"ContactID" => "…", "ContactPersons" => [...], "SomeNewField" => "…"}
+```
+
+Use it to reach fields kiwi doesn't model yet, or to store what Xero sent
+verbatim.
+
+Three things to know:
+
+- **`#raw` is not `#to_h`.** `to_h` is a snake_case projection rebuilt from
+  the modelled attributes — different keys, different nesting. If you store
+  `to_h` where you meant to store the payload, readers fail by returning
+  nil rather than raising.
+- **It's top-level only.** Nested objects (line items, addresses, contact
+  persons) have no `#raw` of their own. They don't need one: the top-level
+  hash already holds every nested payload, so `contact.raw["ContactPersons"]`
+  gets there.
+- **It costs memory.** Every resource holds its source hash alongside the
+  hydrated attributes, which roughly doubles the footprint of a large page.
+  That's why it's off by default.
 
 ## What the client gives you
 
@@ -2657,6 +2699,162 @@ puts "Default theme: #{default.name}"
 
 
 ================================================================================
+FILE: docs/accounting/tracking-category.md
+================================================================================
+
+# Tracking Categories
+
+Xero **tracking categories** let an organisation tag transactions along its
+own dimensions — Region, Department, Cost Centre. Each category holds a set
+of options (Eastside, Westside), and a line item picks at most one option
+per category. An organisation can have at most two active categories.
+
+You need a `tenant_id` from a [connection](../connections.md) before you can
+fetch tracking categories.
+
+> See: [Xero docs — Tracking Categories](https://developer.xero.com/documentation/api/accounting/trackingcategories)
+
+## Two shapes, two classes
+
+Xero uses the phrase "tracking category" for two different things, and kiwi
+models them as two separate classes. Getting these mixed up is the most
+common confusion here, so it's worth being explicit.
+
+**`XeroKiwi::Accounting::TrackingCategory`** — the *definition*, returned by
+`GET /TrackingCategories`. The category plus every option available under it.
+
+```json
+{ "TrackingCategoryID": "abc", "Name": "Region", "Status": "ACTIVE",
+  "Options": [ { "TrackingOptionID": "def", "Name": "Eastside", "Status": "ACTIVE" } ] }
+```
+
+**`XeroKiwi::Accounting::Tracking`** — the *assignment*, nested on a line
+item (Xero's own field name for it is `Tracking`) or a contact. One category
+and the single option chosen for it, flattened.
+
+```json
+{ "TrackingCategoryID": "abc", "TrackingOptionID": "def",
+  "Name": "Region", "Option": "Eastside" }
+```
+
+They share a name and one ID field and nothing else. If you're reading
+`invoice.line_items.first.tracking`, you have `Tracking` objects. If you
+called `client.tracking_categories`, you have `TrackingCategory` objects.
+
+## Listing tracking categories
+
+```ruby
+client = XeroKiwi::Client.new(access_token: "ya29...")
+
+categories = client.tracking_categories(tenant_id)
+
+categories.first.name             # => "Region"
+categories.first.options.map(&:name)  # => ["Eastside", "Westside"]
+```
+
+`client.tracking_categories` hits `GET /api.xro/2.0/TrackingCategories` with
+the `Xero-Tenant-Id` header set, and returns a `XeroKiwi::Page` of
+`TrackingCategory` objects.
+
+This endpoint isn't paged — an organisation has at most two active
+categories. `each_tracking_category` exists so all ten list resources behave
+consistently, but there's no reason to reach for it over the plain call.
+
+## Fetching a single category
+
+```ruby
+category = client.tracking_category(tenant_id, "e2f2f732-e92a-4f3a-9c4d-ee4da0182a13")
+category.name  # => "Region"
+```
+
+Hits `GET /api.xro/2.0/TrackingCategories/{TrackingCategoryID}` and returns a
+single `TrackingCategory`, or `nil` if the response is empty.
+
+## The TrackingCategory object
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `tracking_category_id` | `String` | The unique Xero identifier for the category. |
+| `name` | `String` | The category's display name (e.g. "Region"). |
+| `status` | `String` | `"ACTIVE"` or `"ARCHIVED"`. |
+| `options` | `Array<TrackingOption>` | The options available under this category. Empty array when absent. |
+
+`#active?` is a shorthand for `status == "ACTIVE"`.
+
+## The TrackingOption object
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `tracking_option_id` | `String` | The unique Xero identifier for the option. |
+| `name` | `String` | The option's display name (e.g. "Eastside"). |
+| `status` | `String` | `"ACTIVE"` or `"DELETED"`. |
+
+`#active?` is a shorthand for `status == "ACTIVE"`.
+
+## The Tracking object
+
+The assignment shape, nested on line items and contacts.
+
+| Attribute | Type | What it is |
+|-----------|------|------------|
+| `tracking_category_id` | `String` | Which category this assignment is for. |
+| `tracking_option_id` | `String` | Which option was chosen. |
+| `name` | `String` | The category's name, denormalised by Xero. |
+| `option` | `String` | The chosen option's name, denormalised by Xero. |
+
+## Querying
+
+`name` and `status` are queryable on both `TrackingCategory` and
+`TrackingOption`, as is the identity field.
+
+```ruby
+client.tracking_categories(tenant_id, where: { status: "ACTIVE" })
+```
+
+## Equality and hashing
+
+Two `TrackingCategory` objects are `==` if they share the same
+`tracking_category_id`; two `TrackingOption` objects if they share the same
+`tracking_option_id`. `Tracking` has no server-side primary key of its own,
+so it falls back to structural equality — every attribute must match.
+
+## Error behaviour
+
+| HTTP status | Exception | What it usually means |
+|-------------|-----------|------------------------|
+| 200 | (none — returns categories) | Success |
+| 401 | `XeroKiwi::AuthenticationError` | Access token is invalid or expired |
+| 403 | `XeroKiwi::ClientError` | The token doesn't have the `accounting.settings` scope |
+| 404 | `XeroKiwi::ClientError` | The tracking category ID doesn't exist in this organisation |
+
+## Common patterns
+
+### Building a lookup from option ID to names
+
+Line items carry only IDs and denormalised names; if you need the canonical
+option list, fetch the definitions once per sync and index them.
+
+```ruby
+options = client.tracking_categories(tenant_id).flat_map do |category|
+  category.options.map { |option| [option.tracking_option_id, [category.name, option.name]] }
+end.to_h
+
+invoice.line_items.each do |line|
+  line.tracking.each do |assignment|
+    category_name, option_name = options.fetch(assignment.tracking_option_id)
+    puts "#{category_name}: #{option_name}"
+  end
+end
+```
+
+### Ignoring archived categories
+
+```ruby
+active = client.tracking_categories(tenant_id).select(&:active?)
+```
+
+
+================================================================================
 FILE: docs/accounting/address.md
 ================================================================================
 
@@ -3173,6 +3371,54 @@ Xero enforces three separate rate limits, all returned with HTTP 429:
 Plus a `Retry-After` header on every 429 telling you how many seconds to
 wait before trying again.
 
+## Checking how much quota is left
+
+`client.rate_limit(tenant_id)` answers "how many calls can I still make
+for this tenant today?" — useful when a long job should stop early and
+leave headroom for everything else on the same tenant.
+
+```ruby
+invoice_ids.each do |id|
+  break if client.rate_limit(tenant).day_below?(1_000)
+
+  urls << client.online_invoice_url(tenant, id)
+end
+```
+
+It blends the only two sources that know anything, and always reports
+**the stricter of the two**:
+
+| Source | Where it comes from | What it sees |
+|--------|--------------------|--------------|
+| `reported` | Xero's `X-DayLimit-Remaining` / `X-MinLimit-Remaining` headers on the last call to that tenant | Every consumer of the tenant's quota, including other applications. Nil until a request has been made. |
+| `configured` | The throttle limiter's own bucket | Only calls made through this limiter — but it encodes the headroom you deliberately configured. Nil when throttling is off. |
+
+So if Xero reports 3,000 calls left but a bucket configured at 4,900/day
+holds 500 tokens, the answer is 500 — the configured limit is a ceiling
+you chose and the sync should not spend past it. If another app has burned
+the tenant's quota so Xero reports 50 while the bucket still shows 2,000,
+the answer is 50 — that one is reality.
+
+```ruby
+rl = client.rate_limit(tenant)
+
+rl.day_remaining      # => 500     the binding number
+rl.minute_remaining   # => 55
+rl.day_below?(1_000)  # => true
+rl.day_source         # => :configured   which one is binding
+rl.reported           # => #<struct day=3000, minute=58, app_minute=9800>
+rl.configured         # => #<struct day=500, minute=55>
+rl.known?             # => true
+```
+
+The headers are captured on every response, including error responses — a
+429 is exactly when they matter most.
+
+When neither source has a reading, `day_remaining` is nil and
+`day_below?` returns **false**. Not knowing how much quota is left isn't a
+reason to halt a sync, and halting would break the common case where the
+first call is what populates the figures.
+
 ## What Xero Kiwi does automatically
 
 Xero Kiwi sets up a `faraday-retry` middleware that handles transient failures
@@ -3380,6 +3626,249 @@ shape depends entirely on your traffic patterns.
 
 
 ================================================================================
+FILE: docs/throttling.md
+================================================================================
+
+# Proactive throttling
+
+Xero Kiwi's retry middleware (see
+[retries-and-rate-limits.md](retries-and-rate-limits.md)) handles 429s *after*
+they happen — it honours `Retry-After` and backs off. That's fine when calls
+are infrequent, but Xero treats *hitting* the rate limit as a misbehaviour
+signal, and multi-worker setups (e.g. several Sidekiq processes syncing the
+same tenant) regularly trip it.
+
+The throttle layer is the other half of the story: block *before* the request
+goes out so you rarely hit 429 in the first place. It's **opt-in** — omit
+the `throttle:` kwarg and behaviour is identical to previous versions.
+
+## When to reach for this
+
+Wire up a limiter if:
+
+- Multiple processes or workers can call Xero for the same tenant concurrently.
+- You see sporadic 429s under normal load (not just traffic spikes).
+- You want predictable pacing rather than "fire everything, react to 429s."
+
+Skip it if you have a single-process, single-worker caller. The retry layer is
+enough.
+
+## Quick start
+
+```ruby
+require "redis"
+
+throttle = XeroKiwi::Throttle::RedisTokenBucket.new(
+  redis:      Redis.new(url: ENV["REDIS_URL"]),
+  per_minute: 55,      # Xero's default is 60. Leave a bit of headroom.
+  per_day:    4_900,   # optional. Xero's default is 5,000.
+  max_wait:   30.0     # cap on how long we'll block for a per-minute token.
+)
+
+client = XeroKiwi::Client.new(
+  access_token: access_token,
+  throttle:     throttle
+)
+
+client.organisation(tenant_id)   # blocks briefly if the bucket is empty
+```
+
+Same `throttle:` instance across all clients that share a Redis — that's how
+coordination happens.
+
+## Sharing one limiter across every client (Eg. Rails)
+
+Passing `throttle:` to every `Client.new` call gets tedious. Configure a
+module-level default once, and every new client picks it up automatically:
+
+```ruby
+# config/initializers/xero_kiwi.rb
+XeroKiwi.configure do |c|
+  c.default_throttle = XeroKiwi::Throttle::RedisTokenBucket.new(
+    redis:      Redis.new(url: ENV.fetch("REDIS_URL")),
+    per_minute: 55,
+    per_day:    4_900
+  )
+end
+```
+
+From then on:
+
+```ruby
+XeroKiwi::Client.new(access_token: token)             # uses default_throttle
+XeroKiwi::Client.new(access_token: token, throttle: other) # explicit override wins
+XeroKiwi::Client.new(access_token: token, throttle: XeroKiwi::Throttle::NullLimiter.new) # opt out
+```
+
+Precedence is: explicit `throttle:` kwarg → `XeroKiwi.default_throttle` →
+`NullLimiter`. Reset in tests with `XeroKiwi.default_throttle = nil` so global
+state doesn't leak between examples.
+
+## How it works
+
+A token bucket per tenant, stored as a Redis hash. Each call to Xero consumes
+a token; tokens refill at `capacity / window` per millisecond. All of the
+read-modify-write runs inside a Lua script, so two workers racing on the same
+bucket can't both spend the same token.
+
+The middleware reads `Xero-Tenant-Id` from the outgoing request and asks the
+limiter for a token before the HTTP call goes out. Untenanted requests
+(`/connections`, OAuth endpoints) bypass the middleware — they have no
+bucket.
+
+The middleware sits *below* the retry middleware in the Faraday stack, which
+means every retry attempt also consumes a token. So a burst of 429s doesn't
+starve other tenants' throughput.
+
+## Composing with the retry middleware
+
+Both layers stay on. They catch different failures:
+
+| Layer | Fires on | Action |
+|-------|----------|--------|
+| Throttle (proactive) | Your own bucket count | Sleep, then retry the acquire |
+| Retry (reactive) | A 429 that still slipped through | Honour `Retry-After` and retry the HTTP call |
+
+You can't just disable the retry layer once the throttle is in place:
+
+- Your bucket only models *your* calls to one tenant. The per-app 10k/min
+  limit is shared with anything else hitting the same Xero credentials.
+- Clock skew between Redis and Xero's own clock means your 60/min window
+  doesn't line up perfectly with theirs.
+- If Redis briefly fails, the limiter fails open (see below) — retry is the
+  safety net.
+
+## Choosing limits
+
+Pick values *below* Xero's defaults:
+
+| Xero limit | Headroom suggestion |
+|------------|---------------------|
+| 60 calls/min per tenant | `per_minute: 50` – `55` |
+| 5,000 calls/day per tenant | `per_day: 4,700` – `4,900` |
+
+The exact number depends on how much you care about the occasional 429 vs.
+maximising throughput. If your job batches run for hours, lean conservative —
+the daily limit resets on Xero's clock, not yours, and the first few
+minutes after "daily reset" can be ambiguous.
+
+## Per-minute vs per-day failure modes
+
+The two buckets fail differently on purpose.
+
+**Per-minute:** the limiter sleeps (up to `max_wait`) and retries. Short waits
+are normal and expected — a worker pausing 2 seconds to let the bucket refill
+is fine. If the wait would exceed `max_wait`, it raises
+`XeroKiwi::Throttle::Timeout`. Treat that as "something upstream is wrong" —
+probably too many concurrent workers for the configured `per_minute`.
+
+**Per-day:** the limiter raises `XeroKiwi::Throttle::DailyLimitExhausted`
+immediately, with a `retry_after` attribute in seconds. Sleeping for hours is
+never the right move in a Sidekiq worker, so the caller has to decide:
+
+```ruby
+begin
+  client.invoices(tenant_id)
+rescue XeroKiwi::Throttle::DailyLimitExhausted => e
+  # Re-enqueue the job for tomorrow. `retry_after` is seconds until the
+  # bucket has at least one token.
+  MyJob.perform_in(e.retry_after, org_id)
+end
+```
+
+This mirrors the `XeroKiwi::RateLimitError` shape that the retry layer raises
+after exhausting retries on a 429, so the handling code is familiar.
+
+## Redis key layout
+
+Buckets live under a namespace (`xero_kiwi:throttle` by default):
+
+```
+xero_kiwi:throttle:<tenant_id>:minute
+xero_kiwi:throttle:<tenant_id>:day
+```
+
+Each key is a Redis hash with `tokens` (float) and `last_refill_ms`. Keys
+carry a `PEXPIRE` of `2 × window` so stale tenants clean themselves up.
+
+Override the namespace with `namespace:` if you're sharing a Redis with other
+rate-limiter traffic:
+
+```ruby
+XeroKiwi::Throttle::RedisTokenBucket.new(
+  redis:      Redis.new,
+  per_minute: 55,
+  namespace:  "myapp:xero"
+)
+```
+
+## What happens if Redis is down
+
+The limiter fails open. If Redis raises (connection refused, timeout), the
+limiter logs a warning via `Kernel.warn` and returns immediately so the
+request still goes out. The retry middleware will still catch any 429s that
+result.
+
+Pass a `logger:` to route warnings somewhere useful:
+
+```ruby
+XeroKiwi::Throttle::RedisTokenBucket.new(
+  redis:      Redis.new,
+  per_minute: 55,
+  logger:     Rails.logger
+)
+```
+
+Fail-open is deliberate: a misbehaving Redis shouldn't stop your app talking
+to Xero. The reactive retry layer still protects you from actually hitting
+the limits.
+
+## Asking how much is left
+
+`RedisTokenBucket#remaining(tenant_id)` reports the current token counts
+without spending one:
+
+```ruby
+bucket.remaining("tenant-abc")
+# => { minute: 55, day: 4_312 }
+```
+
+It runs the same refill arithmetic as `acquire` in a separate read-only
+Lua script, so polling it can't starve the bucket you're polling. Like
+`acquire`, it fails open and returns `nil` if Redis is unreachable, and
+`day` is `nil` when no `per_day` limit is configured.
+
+Most callers won't use this directly — `client.rate_limit(tenant_id)`
+combines it with what Xero itself reported and hands back whichever is
+stricter. See [retries and rate limits](retries-and-rate-limits.md).
+
+## Writing a custom limiter
+
+The limiter contract is one required method:
+
+```ruby
+class MyLimiter
+  def acquire(tenant_id)
+    # Block until a token is available for this tenant, or raise
+    # XeroKiwi::Throttle::Timeout / DailyLimitExhausted if you want the
+    # same exception shapes.
+  end
+
+  # Optional. Implement it and client.rate_limit(tenant_id) will factor
+  # your bucket into its answer; leave it out and kiwi falls back to
+  # Xero's reported headers alone.
+  def remaining(tenant_id)
+    { minute: …, day: … }
+  end
+end
+```
+
+Pass any object implementing it as `throttle:`. The built-in
+`XeroKiwi::Throttle::NullLimiter` is a no-op default — it's what runs when
+`throttle:` is omitted.
+
+
+================================================================================
 FILE: docs/querying.md
 ================================================================================
 
@@ -3515,6 +4004,28 @@ client.invoices(tenant, page: 2).page_size     # => 100
 client.invoices(tenant, page: 2).item_count    # total-on-this-page
 ```
 
+## `page_size:` — how many per page
+
+Maps to Xero's `pageSize` query param. Xero's own default is 100 and its
+maximum is 1,000 on most paged endpoints.
+
+Set it once on the client and every call inherits it; override per call
+where you need something different.
+
+```ruby
+client = XeroKiwi::Client.new(access_token: token, page_size: 1_000)
+
+client.invoices(tenant)                  # pageSize=1000
+client.invoices(tenant, page_size: 100)  # this call only
+```
+
+Leave it unset and kiwi omits the parameter entirely, so Xero applies its
+own default.
+
+This is worth setting for any full-tenant sync. At 100 per page a
+50,000-invoice tenant costs ~500 API calls; at 1,000 it costs ~50, against
+a daily limit of 5,000.
+
 ### Walking every page — `each_<resource>`
 
 For incremental syncs or whole-tenant scans, use the `each_*` helpers.
@@ -3535,7 +4046,50 @@ client.each_invoice(tenant, order: { date: :desc })
 
 Available for every listable resource: `each_user`, `each_contact`,
 `each_contact_group`, `each_invoice`, `each_credit_note`, `each_payment`,
-`each_prepayment`, `each_overpayment`, `each_branding_theme`.
+`each_prepayment`, `each_overpayment`, `each_branding_theme`,
+`each_tracking_category`.
+
+### Walking pages instead of items — `each_<resource>_page`
+
+Same walk, but each yield is a whole `Page` rather than one item. Use it
+when you need the page number — which is what makes a sync resumable.
+
+```ruby
+client.each_invoice_page(tenant, page_size: 1_000) do |page|
+  Invoice.upsert_all(page.map(&:to_h))
+  cursor.update!(invoices: page.page)   # same transaction as the upsert
+end
+```
+
+Recording the page number in the same transaction that stores the rows
+matters: a marker written when the response lands, before the rows are
+saved, can survive a crash that the rows don't — and the next run then
+skips a page it never actually imported.
+
+### Resuming — `start_page:`
+
+Both `each_*` and `each_*_page` accept `start_page:` (default 1), so a
+resumed run picks up where the last one stopped.
+
+```ruby
+client.each_invoice_page(tenant, start_page: cursor.invoices + 1) do |page|
+  …
+end
+```
+
+### How the walk knows when to stop
+
+It stops on an empty page, or on a page shorter than a full one. "Full" is
+measured against Xero's stated page size when the response carries a
+`pagination` envelope, and otherwise against the largest page seen so far
+in that walk.
+
+It is deliberately **not** measured against the `page_size:` you asked
+for. Xero clamps a request above an endpoint's maximum, so a walk that
+asked for 2,000 where the cap is 1,000 would see its very first page as
+short and stop after one page — silently truncating the sync. The cost of
+measuring instead of assuming is one extra request when the whole result
+fits in a single page and no envelope came back.
 
 ## `modified_since:` — incremental sync
 
@@ -3553,6 +4107,25 @@ exception, no special flag. An empty page after `modified_since:` is
 indistinguishable from a filter that matched nothing (intentional — the
 caller can treat them identically).
 
+## `include_archived:` — archived contacts
+
+Contacts only. Maps to Xero's `includeArchived` query param, which returns
+archived contacts **alongside** active ones in the same pass.
+
+```ruby
+client.contacts(tenant, include_archived: true)
+client.each_contact(tenant, include_archived: true) { |contact| … }
+```
+
+This is not the same as filtering on `contact_status`. A
+`where: { contact_status: "ARCHIVED" }` returns *only* archived contacts;
+`include_archived: true` returns both kinds together, which is what you
+want when mirroring a tenant's full contact list.
+
+It matters beyond contacts themselves: Xero keeps serving archived
+contacts as members of contact groups, so without this you can't tell
+which group members are archived locally.
+
 ## Combining everything
 
 Mix and match freely:
@@ -3563,6 +4136,7 @@ client.invoices(
   where:          { status: "AUTHORISED", contact: { contact_id: "abc-123" } },
   order:          { date: :desc },
   page:           1,
+  page_size:      1_000,
   modified_since: last_sync_at
 )
 ```

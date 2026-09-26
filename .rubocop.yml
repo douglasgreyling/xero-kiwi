@@ -46,6 +46,13 @@ Lint/StructNewOverride:
 Naming/MemoizedInstanceVariableName:
   EnforcedStyleForLeadingUnderscores: required
 
+# lib/xero-kiwi.rb has to match the gem name, hyphen and all — that's what
+# makes `gem "xero-kiwi"` auto-require without a `require:` option. It is a
+# one-line shim around lib/xero_kiwi.rb.
+Naming/FileName:
+  Exclude:
+    - 'lib/xero-kiwi.rb'
+
 Naming/VariableNumber:
   EnforcedStyle: snake_case
 
@@ -128,8 +135,11 @@ Layout/LineLength:
 Metrics/BlockLength:
   Enabled: false
 
+# Client is a deliberately flat API surface: one list / each / each_page /
+# get quartet per accounting resource. Splitting it into modules to satisfy a
+# line count would scatter that surface for no reader's benefit.
 Metrics/ClassLength:
-  Max: 500
+  Max: 700
 
 Metrics/MethodLength:
   Max: 15

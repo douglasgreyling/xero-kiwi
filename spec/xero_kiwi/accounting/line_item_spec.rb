@@ -50,8 +50,8 @@ RSpec.describe XeroKiwi::Accounting::LineItem do
       )
     end
 
-    it "wraps tracking as XeroKiwi::Accounting::TrackingCategory objects" do
-      expect(item.tracking).to all(be_a(XeroKiwi::Accounting::TrackingCategory))
+    it "wraps tracking as XeroKiwi::Accounting::Tracking objects" do
+      expect(item.tracking).to all(be_a(XeroKiwi::Accounting::Tracking))
       expect(item.tracking.first.name).to eq("Activity/Workstream")
       expect(item.tracking.first.option).to eq("Onsite consultancy")
       expect(item.tracking.first.tracking_category_id).to eq("e2f2f732-e92a-4f3a-9c4d-ee4da0182a13")

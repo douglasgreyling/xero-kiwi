@@ -192,9 +192,28 @@ Fail-open is deliberate: a misbehaving Redis shouldn't stop your app talking
 to Xero. The reactive retry layer still protects you from actually hitting
 the limits.
 
+## Asking how much is left
+
+`RedisTokenBucket#remaining(tenant_id)` reports the current token counts
+without spending one:
+
+```ruby
+bucket.remaining("tenant-abc")
+# => { minute: 55, day: 4_312 }
+```
+
+It runs the same refill arithmetic as `acquire` in a separate read-only
+Lua script, so polling it can't starve the bucket you're polling. Like
+`acquire`, it fails open and returns `nil` if Redis is unreachable, and
+`day` is `nil` when no `per_day` limit is configured.
+
+Most callers won't use this directly — `client.rate_limit(tenant_id)`
+combines it with what Xero itself reported and hands back whichever is
+stricter. See [retries and rate limits](retries-and-rate-limits.md).
+
 ## Writing a custom limiter
 
-The limiter contract is one method:
+The limiter contract is one required method:
 
 ```ruby
 class MyLimiter
@@ -202,6 +221,13 @@ class MyLimiter
     # Block until a token is available for this tenant, or raise
     # XeroKiwi::Throttle::Timeout / DailyLimitExhausted if you want the
     # same exception shapes.
+  end
+
+  # Optional. Implement it and client.rate_limit(tenant_id) will factor
+  # your bucket into its answer; leave it out and kiwi falls back to
+  # Xero's reported headers alone.
+  def remaining(tenant_id)
+    { minute: …, day: … }
   end
 end
 ```

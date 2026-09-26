@@ -148,8 +148,8 @@ RSpec.describe XeroKiwi::Accounting::Contact do
       expect(contact.branding_theme.name).to eq("Standard")
     end
 
-    it "wraps tracking categories as XeroKiwi::Accounting::TrackingCategory objects" do
-      expect(contact.sales_tracking_categories).to all(be_a(XeroKiwi::Accounting::TrackingCategory))
+    it "wraps tracking categories as XeroKiwi::Accounting::Tracking objects" do
+      expect(contact.sales_tracking_categories).to all(be_a(XeroKiwi::Accounting::Tracking))
       expect(contact.purchases_tracking_categories).to eq([])
     end
 

@@ -45,14 +45,15 @@ module XeroKiwi
       attribute :payment_terms,                  xero: "PaymentTerms",                 hydrate: ->(raw) { PaymentTerms.from_hash(raw) }
 
       # Xero's /Organisation endpoint returns a one-element "Organisations"
-      # array — we unwrap it to a single object.
-      def self.from_response(payload)
+      # array — we unwrap it to a single object. `opts` stays positional to
+      # match Resource.from_response; see the note there.
+      def self.from_response(payload, opts = {})
         return nil if payload.nil?
 
         items = payload["Organisations"]
         return nil if items.nil? || items.empty?
 
-        new(items.first)
+        new(items.first, retain_raw: opts[:retain_raw])
       end
 
       def demo_company? = is_demo_company == true

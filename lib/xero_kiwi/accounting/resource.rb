@@ -99,13 +99,24 @@ module XeroKiwi
 
         public
 
-        def from_response(payload)
+        # `opts[:retain_raw]` is threaded down from Client#initialize. It
+        # applies to the resources built here and not to their nested
+        # objects — the top-level `raw` hash already holds every nested
+        # payload verbatim, so `contact.raw["ContactPersons"]` gets there
+        # without pushing the flag through Hydrator and every build_object
+        # call.
+        #
+        # `opts` is positional for the same reason it is on #initialize: a
+        # bare string-keyed payload (`from_response("Users" => [])`) would
+        # otherwise be swallowed as keyword arguments in Ruby 3, leaving
+        # `payload` unset.
+        def from_response(payload, opts = {})
           return [] if payload.nil?
 
           items = payload[payload_key]
           return [] if items.nil?
 
-          items.map { |attrs| new(attrs) }
+          items.map { |attrs| new(attrs, retain_raw: opts[:retain_raw]) }
         end
       end
 
@@ -116,12 +127,21 @@ module XeroKiwi
       def initialize(attrs, opts = {})
         attrs         = attrs.transform_keys(&:to_s)
         @is_reference = opts[:reference] == true
+        @raw          = opts[:retain_raw] ? attrs.freeze : nil
 
         self.class.attributes.each do |name, spec|
           value = Hydrator.call(attrs[spec[:xero]], spec)
           instance_variable_set("@#{name}", value)
         end
       end
+
+      # Xero's response hash for this resource, exactly as it arrived, or nil
+      # unless the client was built with `retain_raw: true`. Use it to reach
+      # fields the gem doesn't model, or to store the payload verbatim.
+      #
+      # Note `to_h` is NOT this — it's a snake_case projection rebuilt from
+      # the modelled attributes, with different keys and different nesting.
+      attr_reader :raw
 
       def reference?
         @is_reference

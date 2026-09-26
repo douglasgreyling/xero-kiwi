@@ -74,6 +74,35 @@ module XeroKiwi
 
       LUA_SHA = Digest::SHA1.hexdigest(LUA_SCRIPT)
 
+      # Read-only sibling of LUA_SCRIPT: runs the same refill arithmetic but
+      # commits nothing, so asking how much is left never costs a token.
+      # Returns floored token counts in KEYS order (minute, day?).
+      PEEK_SCRIPT = <<~LUA
+        local now_ms = tonumber(ARGV[1])
+        local n = #KEYS
+        local out = {}
+
+        for i = 1, n do
+          local capacity  = tonumber(ARGV[1 + i])
+          local window_ms = tonumber(ARGV[1 + n + i])
+          local refill_per_ms = capacity / window_ms
+
+          local data = redis.call("HMGET", KEYS[i], "tokens", "last_refill_ms")
+          local tokens         = tonumber(data[1]) or capacity
+          local last_refill_ms = tonumber(data[2]) or now_ms
+
+          local elapsed = now_ms - last_refill_ms
+          if elapsed < 0 then elapsed = 0 end
+          tokens = math.min(capacity, tokens + elapsed * refill_per_ms)
+
+          out[i] = math.floor(tokens)
+        end
+
+        return out
+      LUA
+
+      PEEK_SHA = Digest::SHA1.hexdigest(PEEK_SCRIPT)
+
       DEFAULT_CLOCK   = -> { (Process.clock_gettime(Process::CLOCK_REALTIME) * 1000).to_i }
       DEFAULT_SLEEPER = ->(seconds) { Kernel.sleep(seconds) }
 
@@ -111,6 +140,22 @@ module XeroKiwi
         nil
       end
 
+      # How many tokens each bucket currently holds, without spending one.
+      # Returns `{ minute:, day: }` — `day` is nil when no per_day limit is
+      # configured — or nil if Redis is unreachable, matching acquire's
+      # fail-open behaviour.
+      def remaining(key)
+        raise ArgumentError, "key is required" if key.nil? || key.to_s.empty?
+
+        keys, capacities, windows = bucket_args(key)
+        minute, day               = run_script(PEEK_SCRIPT, PEEK_SHA, keys, [@clock.call, *capacities, *windows])
+
+        { minute: minute, day: day }
+      rescue Redis::BaseError => e
+        log_redis_failure(e)
+        nil
+      end
+
       private
 
       def handle_failure(failed, wait_ms, waited_ms)
@@ -132,15 +177,19 @@ module XeroKiwi
 
       def evaluate(key)
         keys, capacities, windows = bucket_args(key)
-        argv                      = [@clock.call, *capacities, *windows]
 
-        begin
-          @redis.evalsha(LUA_SHA, keys: keys, argv: argv)
-        rescue Redis::CommandError => e
-          raise unless e.message.include?("NOSCRIPT")
+        run_script(LUA_SCRIPT, LUA_SHA, keys, [@clock.call, *capacities, *windows])
+      end
 
-          @redis.eval(LUA_SCRIPT, keys: keys, argv: argv)
-        end
+      # evalsha first so the script body isn't shipped on every call; fall
+      # back to a full eval when this Redis hasn't seen the script yet (or
+      # has been flushed since).
+      def run_script(script, sha, keys, argv)
+        @redis.evalsha(sha, keys: keys, argv: argv)
+      rescue Redis::CommandError => e
+        raise unless e.message.include?("NOSCRIPT")
+
+        @redis.eval(script, keys: keys, argv: argv)
       end
 
       def bucket_args(key)

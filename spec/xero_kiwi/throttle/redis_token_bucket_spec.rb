@@ -106,6 +106,46 @@ RSpec.describe XeroKiwi::Throttle::RedisTokenBucket do
         expect { bucket.acquire("") }.to raise_error(ArgumentError)
       end
     end
+
+    describe "#remaining" do
+      it "reports a full bucket before anything has been spent" do
+        expect(build_bucket.remaining("tenant-A")).to eq(minute: 2, day: nil)
+      end
+
+      it "reflects tokens already spent" do
+        bucket = build_bucket
+        bucket.acquire("tenant-A")
+
+        expect(bucket.remaining("tenant-A")[:minute]).to eq(1)
+      end
+
+      # The whole point of a separate script: asking how much is left must
+      # not itself cost a token, or a polling caller would starve its own
+      # bucket just by looking at it.
+      it "commits no decrement of its own" do
+        bucket = build_bucket
+        5.times { bucket.remaining("tenant-A") }
+
+        expect(bucket.remaining("tenant-A")[:minute]).to eq(2)
+      end
+
+      it "reports the day bucket when one is configured" do
+        bucket = build_bucket(per_day: 100)
+
+        expect(bucket.remaining("tenant-A")).to eq(minute: 2, day: 100)
+      end
+
+      it "keeps tenants apart" do
+        bucket = build_bucket
+        bucket.acquire("tenant-A")
+
+        expect(bucket.remaining("tenant-B")[:minute]).to eq(2)
+      end
+
+      it "rejects a blank key" do
+        expect { build_bucket.remaining("") }.to raise_error(ArgumentError)
+      end
+    end
   end
 
   context "when Redis raises (fail-open path)" do

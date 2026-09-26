@@ -59,22 +59,54 @@ contact.raw
 # => {"ContactID" => "…", "ContactPersons" => [...], "SomeNewField" => "…"}
 ```
 
-Use it to reach fields kiwi doesn't model yet, or to store what Xero sent
-verbatim.
+Use it to reach fields kiwi doesn't model yet.
 
-Three things to know:
+Five things to know:
 
+- **It's the item, not the envelope.** `contact.raw` has no `"Contacts"`
+  key and `organisation.raw` has no `"Organisations"` key — kiwi unwraps
+  the envelope before building a resource, so there's nothing left of it by
+  the time `raw` is populated. If you need the envelope back, you're
+  rebuilding it yourself.
+- **It's the JSON representation.** Kiwi sends
+  `Accept: application/json`. Xero also serves XML, which nests
+  differently — XML has no arrays, so a single child parses to a Hash and
+  several to an Array, where JSON is always an Array. `raw` cannot
+  reproduce an XML-derived shape. See [migrating from an XML
+  client](#migrating-from-an-xml-based-client) below.
 - **`#raw` is not `#to_h`.** `to_h` is a snake_case projection rebuilt from
   the modelled attributes — different keys, different nesting. If you store
   `to_h` where you meant to store the payload, readers fail by returning
   nil rather than raising.
-- **It's top-level only.** Nested objects (line items, addresses, contact
-  persons) have no `#raw` of their own. They don't need one: the top-level
-  hash already holds every nested payload, so `contact.raw["ContactPersons"]`
-  gets there.
+- **It's per resource, not per nested object.** Line items, addresses and
+  contact persons have no `#raw` of their own. They don't need one: the
+  resource's hash already holds every nested payload, so
+  `contact.raw["ContactPersons"]` gets there.
 - **It costs memory.** Every resource holds its source hash alongside the
   hydrated attributes, which roughly doubles the footprint of a large page.
   That's why it's off by default.
+
+### Migrating from an XML-based client
+
+If you're replacing a Xero client that sent `Accept: text/xml` — HTTParty
+and similar default to it — any payloads you already have stored are
+XML-shaped, and `raw` will not match them. The differences are structural,
+not cosmetic:
+
+| | XML (`text/xml`) | JSON (`application/json`) |
+|---|---|---|
+| Organisation body | `{"Organisations" => {"Organisation" => {…}}}` | `{"Organisations" => [{…}]}` |
+| One address | `{"Address" => {…}}` | `[{…}]` |
+| Several addresses | `{"Address" => [{…}, {…}]}` | `[{…}, {…}]` |
+
+So a reader that digs `("Organisations", "Organisation", "Addresses",
+"Address")` returns nil against anything kiwi produces, whether you store
+`raw` or `to_h`. No client setting changes this — the old shape is an
+artefact of an XML parse kiwi doesn't do.
+
+Plan for it: promote the fields those readers need to real columns, and
+use `raw` for the backfill. `raw` is the true payload, so it preserves
+everything you need to populate them.
 
 ## What the client gives you
 

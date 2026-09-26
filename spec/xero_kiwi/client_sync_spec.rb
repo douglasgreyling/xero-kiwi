@@ -251,7 +251,23 @@ RSpec.describe XeroKiwi::Client do
     it "is not the same thing as to_h" do
       contact = client(retain_raw: true).contacts(tenant_id).first
 
-      expect(contact.raw.keys).not_to include(:contact_id)
+      expect(contact.raw).not_to eq(contact.to_h)
+    end
+
+    it "keeps the PascalCase keys that to_h converts to snake_case", :aggregate_failures do
+      contact = client(retain_raw: true).contacts(tenant_id).first
+
+      expect(contact.raw).to include("ContactID")
+      expect(contact.to_h).to include(:contact_id)
+    end
+
+    # The envelope is unwrapped before a resource is built, so there is
+    # nothing left of it by the time raw is populated. Callers migrating
+    # from a client that stored whole response bodies hit this first.
+    it "holds the item, not the enclosing envelope" do
+      contact = client(retain_raw: true).contacts(tenant_id).first
+
+      expect(contact.raw).not_to have_key("Contacts")
     end
   end
 

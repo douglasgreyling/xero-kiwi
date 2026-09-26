@@ -20,6 +20,54 @@ Xero enforces three separate rate limits, all returned with HTTP 429:
 Plus a `Retry-After` header on every 429 telling you how many seconds to
 wait before trying again.
 
+## Checking how much quota is left
+
+`client.rate_limit(tenant_id)` answers "how many calls can I still make
+for this tenant today?" — useful when a long job should stop early and
+leave headroom for everything else on the same tenant.
+
+```ruby
+invoice_ids.each do |id|
+  break if client.rate_limit(tenant).day_below?(1_000)
+
+  urls << client.online_invoice_url(tenant, id)
+end
+```
+
+It blends the only two sources that know anything, and always reports
+**the stricter of the two**:
+
+| Source | Where it comes from | What it sees |
+|--------|--------------------|--------------|
+| `reported` | Xero's `X-DayLimit-Remaining` / `X-MinLimit-Remaining` headers on the last call to that tenant | Every consumer of the tenant's quota, including other applications. Nil until a request has been made. |
+| `configured` | The throttle limiter's own bucket | Only calls made through this limiter — but it encodes the headroom you deliberately configured. Nil when throttling is off. |
+
+So if Xero reports 3,000 calls left but a bucket configured at 4,900/day
+holds 500 tokens, the answer is 500 — the configured limit is a ceiling
+you chose and the sync should not spend past it. If another app has burned
+the tenant's quota so Xero reports 50 while the bucket still shows 2,000,
+the answer is 50 — that one is reality.
+
+```ruby
+rl = client.rate_limit(tenant)
+
+rl.day_remaining      # => 500     the binding number
+rl.minute_remaining   # => 55
+rl.day_below?(1_000)  # => true
+rl.day_source         # => :configured   which one is binding
+rl.reported           # => #<struct day=3000, minute=58, app_minute=9800>
+rl.configured         # => #<struct day=500, minute=55>
+rl.known?             # => true
+```
+
+The headers are captured on every response, including error responses — a
+429 is exactly when they matter most.
+
+When neither source has a reading, `day_remaining` is nil and
+`day_below?` returns **false**. Not knowing how much quota is left isn't a
+reason to halt a sync, and halting would break the common case where the
+first call is what populates the figures.
+
 ## What Xero Kiwi does automatically
 
 Xero Kiwi sets up a `faraday-retry` middleware that handles transient failures

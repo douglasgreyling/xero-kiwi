@@ -28,12 +28,14 @@ LLMS_SOURCE_FILES = %w[
   docs/accounting/overpayment.md
   docs/accounting/prepayment.md
   docs/accounting/branding-theme.md
+  docs/accounting/tracking-category.md
   docs/accounting/address.md
   docs/accounting/phone.md
   docs/accounting/external-link.md
   docs/accounting/payment-terms.md
   docs/errors.md
   docs/retries-and-rate-limits.md
+  docs/throttling.md
   docs/querying.md
 ].freeze
 

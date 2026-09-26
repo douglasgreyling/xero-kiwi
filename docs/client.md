@@ -41,6 +41,40 @@ you. See [Tokens](tokens.md) for the full refresh story.
 | `adapter:` | `Symbol` / Faraday adapter | No | `Faraday.default_adapter` | The Faraday adapter to use. Override to swap in `:net_http_persistent`, `:typhoeus`, or a test adapter. |
 | `user_agent:` | `String` | No | `"XeroKiwi/<version>"` | Sent as the `User-Agent` header on every request. |
 | `retry_options:` | `Hash` | No | See [retries and rate limits](retries-and-rate-limits.md) | Overrides for the `faraday-retry` configuration. Merged into the defaults. |
+| `throttle:` | Limiter | No | `XeroKiwi.default_throttle`, else none | Proactive per-tenant rate limiting. See [Throttling](throttling.md). |
+| `page_size:` | `Integer` | No | `nil` (Xero's own default of 100) | Default `pageSize` for every list call. Per-call `page_size:` overrides it. See [Querying](querying.md). |
+| `retain_raw:` | `Boolean` | No | `false` | Keep Xero's untouched response hash on each resource, readable via `#raw`. See below. |
+
+### `retain_raw:` and `#raw`
+
+By default a resource hydrates the fields kiwi models and discards the
+original payload. Turn `retain_raw` on and each resource built directly
+from a response keeps that payload:
+
+```ruby
+client  = XeroKiwi::Client.new(access_token: token, retain_raw: true)
+contact = client.contact(tenant, contact_id)
+
+contact.raw
+# => {"ContactID" => "…", "ContactPersons" => [...], "SomeNewField" => "…"}
+```
+
+Use it to reach fields kiwi doesn't model yet, or to store what Xero sent
+verbatim.
+
+Three things to know:
+
+- **`#raw` is not `#to_h`.** `to_h` is a snake_case projection rebuilt from
+  the modelled attributes — different keys, different nesting. If you store
+  `to_h` where you meant to store the payload, readers fail by returning
+  nil rather than raising.
+- **It's top-level only.** Nested objects (line items, addresses, contact
+  persons) have no `#raw` of their own. They don't need one: the top-level
+  hash already holds every nested payload, so `contact.raw["ContactPersons"]`
+  gets there.
+- **It costs memory.** Every resource holds its source hash alongside the
+  hydrated attributes, which roughly doubles the footprint of a large page.
+  That's why it's off by default.
 
 ## What the client gives you
 

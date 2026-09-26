@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Documentation
+
+- Pinned down the scope of `Resource#raw`, which was ambiguous enough to mislead a real consumer. It holds the resource's own item hash — `contact.raw` has no `"Contacts"` key — and it is the JSON representation specifically. Xero's XML representation nests differently (no arrays, so one child parses to a Hash and several to an Array), so `raw` cannot reproduce an XML-derived shape. `docs/client.md` gains a short migration section covering what that means for anyone replacing a client that sent `Accept: text/xml` and has stored payloads. Specs added for both the envelope scope and the PascalCase/snake_case split. The migration section sorts readers into the two piles that behave differently: ones that dig the XML-only structure and must change, and ones that already normalise (`[value].flatten.compact`) where only the writer changes and stored rows stay readable.
+
 ## [0.5.0] - 2026-09-26
 
 The sync-support release: everything needed to drive a full-tenant sync through kiwi rather than around it.

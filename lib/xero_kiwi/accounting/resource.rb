@@ -135,9 +135,20 @@ module XeroKiwi
         end
       end
 
-      # Xero's response hash for this resource, exactly as it arrived, or nil
-      # unless the client was built with `retain_raw: true`. Use it to reach
-      # fields the gem doesn't model, or to store the payload verbatim.
+      # This resource's own hash from Xero's JSON response, exactly as it
+      # arrived, or nil unless the client was built with `retain_raw: true`.
+      # Use it to reach fields the gem doesn't model.
+      #
+      # Scope is the item, NOT the enclosing envelope: `contact.raw` has no
+      # "Contacts" key, and `organisation.raw` no "Organisations" key. Kiwi
+      # unwraps the envelope before a resource is built, so there is nothing
+      # left of it by the time this is populated.
+      #
+      # It is also the JSON representation specifically. Kiwi sends
+      # `Accept: application/json`; Xero's XML representation nests
+      # differently — no arrays, so one child is a Hash and several are an
+      # Array — and `raw` cannot reproduce that shape. Worth knowing when
+      # migrating off an XML-based Xero client with stored payloads.
       #
       # Note `to_h` is NOT this — it's a snake_case projection rebuilt from
       # the modelled attributes, with different keys and different nesting.

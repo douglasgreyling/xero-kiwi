@@ -59,22 +59,80 @@ contact.raw
 # => {"ContactID" => "…", "ContactPersons" => [...], "SomeNewField" => "…"}
 ```
 
-Use it to reach fields kiwi doesn't model yet, or to store what Xero sent
-verbatim.
+Use it to reach fields kiwi doesn't model yet.
 
-Three things to know:
+Five things to know:
 
+- **It's the item, not the envelope.** `contact.raw` has no `"Contacts"`
+  key and `organisation.raw` has no `"Organisations"` key — kiwi unwraps
+  the envelope before building a resource, so there's nothing left of it by
+  the time `raw` is populated. If you need the envelope back, you're
+  rebuilding it yourself.
+- **It's the JSON representation.** Kiwi sends
+  `Accept: application/json`. Xero also serves XML, which nests
+  differently — XML has no arrays, so a single child parses to a Hash and
+  several to an Array, where JSON is always an Array. `raw` cannot
+  reproduce an XML-derived shape. See [migrating from an XML
+  client](#migrating-from-an-xml-based-client) below.
 - **`#raw` is not `#to_h`.** `to_h` is a snake_case projection rebuilt from
   the modelled attributes — different keys, different nesting. If you store
   `to_h` where you meant to store the payload, readers fail by returning
   nil rather than raising.
-- **It's top-level only.** Nested objects (line items, addresses, contact
-  persons) have no `#raw` of their own. They don't need one: the top-level
-  hash already holds every nested payload, so `contact.raw["ContactPersons"]`
-  gets there.
+- **It's per resource, not per nested object.** Line items, addresses and
+  contact persons have no `#raw` of their own. They don't need one: the
+  resource's hash already holds every nested payload, so
+  `contact.raw["ContactPersons"]` gets there.
 - **It costs memory.** Every resource holds its source hash alongside the
   hydrated attributes, which roughly doubles the footprint of a large page.
   That's why it's off by default.
+
+### Migrating from an XML-based client
+
+If you're replacing a Xero client that sent `Accept: text/xml` — HTTParty
+and similar default to it — any payloads you already have stored are
+XML-shaped, and `raw` will not match them. The differences are structural,
+not cosmetic:
+
+| | XML (`text/xml`) | JSON (`application/json`) |
+|---|---|---|
+| Organisation body | `{"Organisations" => {"Organisation" => {…}}}` | `{"Organisations" => [{…}]}` |
+| One address | `{"Address" => {…}}` | `[{…}]` |
+| Several addresses | `{"Address" => [{…}, {…}]}` | `[{…}, {…}]` |
+
+The single-child collapse is the one that catches people: under XML a
+contact with one person parses to a Hash and a contact with two parses to
+an Array, from the same endpoint. Code written against that has a
+normalising step somewhere, whether or not its author knew why.
+
+No client setting reproduces these shapes — they're artefacts of an XML
+parse kiwi doesn't do. But the remedy isn't the same everywhere, and it's
+worth sorting your readers into two piles before planning the work.
+
+**Readers that dig the XML-only structure have to change.** Something like
+`dig("Organisations", "Organisation", "Addresses", "Address")` returns nil
+against anything kiwi produces, whether you store `raw` or `to_h`.
+Promote the fields those readers need to real columns and use `raw` for
+the backfill — it's the true payload, so it carries everything required to
+populate them.
+
+**Readers that already normalise usually survive untouched.** A reader
+doing `[value].flatten.compact` handles the Hash case, the Array case and
+nil identically, so a JSON array flows straight through. If the keys it
+reads are the same in both representations, only the *writer* changes:
+stop unwrapping, store the array. Existing rows stay readable, and you
+skip a migration entirely.
+
+Type coercion is usually fine in that second pile too. XML gives you
+strings — `"false"` rather than `false` — and if the reader hands that to
+something like ActiveModel's boolean cast, both the old string and the new
+real boolean land on the same value.
+
+One piece of luck worth knowing about: the two piles tend to fail
+differently. A `dig` that misses returns nil and writes a blank record
+quietly. Code that assumed a Hash, such as `Array#to_h` on what is now a
+list, raises `TypeError` on the first record with data in it. The noisy
+failures are the ones you can trust to find themselves — budget your
+review time for the silent ones.
 
 ## What the client gives you
 

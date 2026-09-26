@@ -11,7 +11,7 @@ module XeroKiwi
       payload_key "Contacts"
       identity    :contact_id
 
-      # Some classes referenced below (TrackingCategory, ContactGroup,
+      # Some classes referenced below (Tracking, ContactGroup,
       # BrandingTheme) haven't been loaded at the time Contact's class body
       # runs, so the lookup is deferred with a String reference.
 
@@ -40,8 +40,8 @@ module XeroKiwi
       attribute :merged_to_contact_id,               xero: "MergedToContactID", type: :guid
       attribute :sales_default_account_code,         xero: "SalesDefaultAccountCode"
       attribute :purchases_default_account_code,     xero: "PurchasesDefaultAccountCode"
-      attribute :sales_tracking_categories,          xero: "SalesTrackingCategories",        type: :collection, of: "TrackingCategory"
-      attribute :purchases_tracking_categories,      xero: "PurchasesTrackingCategories",    type: :collection, of: "TrackingCategory"
+      attribute :sales_tracking_categories,          xero: "SalesTrackingCategories",        type: :collection, of: "Tracking"
+      attribute :purchases_tracking_categories,      xero: "PurchasesTrackingCategories",    type: :collection, of: "Tracking"
       attribute :sales_default_line_amount_type,     xero: "SalesDefaultLineAmountType"
       attribute :purchases_default_line_amount_type, xero: "PurchasesDefaultLineAmountType"
       attribute :tracking_category_name,             xero: "TrackingCategoryName"

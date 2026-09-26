@@ -1,69 +1,81 @@
 # frozen_string_literal: true
 
 RSpec.describe XeroKiwi::Accounting::TrackingCategory do
-  let(:full_attrs) do
+  subject(:category) { described_class.new(attrs) }
+
+  let(:attrs) do
     {
       "TrackingCategoryID" => "e2f2f732-e92a-4f3a-9c4d-ee4da0182a13",
-      "TrackingOptionID"   => "3f05cdf9-246b-46a2-bf6f-441da1b09b89",
-      "Name"               => "Activity/Workstream",
-      "Option"             => "Onsite consultancy"
+      "Name"               => "Region",
+      "Status"             => "ACTIVE",
+      "Options"            => [
+        { "TrackingOptionID" => "3f05cdf9-246b-46a2-bf6f-441da1b09b89", "Name" => "Eastside", "Status" => "ACTIVE" },
+        { "TrackingOptionID" => "8a7f1b2c-1111-2222-3333-444455556666", "Name" => "Westside", "Status" => "DELETED" }
+      ]
     }
   end
 
   describe "#initialize" do
-    it "maps all attributes" do
-      tc = described_class.new(full_attrs)
-
-      expect(tc).to have_attributes(
+    it "maps the category's own attributes" do
+      expect(category).to have_attributes(
         tracking_category_id: "e2f2f732-e92a-4f3a-9c4d-ee4da0182a13",
-        tracking_option_id:   "3f05cdf9-246b-46a2-bf6f-441da1b09b89",
-        name:                 "Activity/Workstream",
-        option:               "Onsite consultancy"
+        name:                 "Region",
+        status:               "ACTIVE"
       )
     end
 
-    it "handles missing IDs gracefully" do
-      tc = described_class.new({ "Name" => "Region", "Option" => "North" })
+    it "hydrates Options into TrackingOption objects" do
+      expect(category.options).to all(be_a(XeroKiwi::Accounting::TrackingOption))
+    end
 
-      expect(tc.tracking_category_id).to be_nil
-      expect(tc.name).to eq("Region")
-      expect(tc.option).to eq("North")
+    it "maps each option's attributes" do
+      expect(category.options.first).to have_attributes(
+        tracking_option_id: "3f05cdf9-246b-46a2-bf6f-441da1b09b89",
+        name:               "Eastside",
+        status:             "ACTIVE"
+      )
+    end
+
+    it "defaults Options to an empty array when absent" do
+      expect(described_class.new("TrackingCategoryID" => "x").options).to eq([])
     end
   end
 
-  describe "#to_h" do
-    it "returns a hash keyed by ruby attribute names" do
-      tc   = described_class.new(full_attrs)
-      hash = tc.to_h
+  describe "#active?" do
+    it "is true for an ACTIVE category" do
+      expect(category.active?).to be(true)
+    end
 
-      expect(hash[:name]).to eq("Activity/Workstream")
-      expect(hash.keys).to match_array(described_class.attributes.keys)
+    it "is false for an ARCHIVED category" do
+      expect(described_class.new(attrs.merge("Status" => "ARCHIVED")).active?).to be(false)
+    end
+  end
+
+  describe ".from_response" do
+    it "unwraps the TrackingCategories payload key" do
+      expect(described_class.from_response("TrackingCategories" => [attrs]).first).to eq(category)
+    end
+
+    it "returns an empty array when the key is missing" do
+      expect(described_class.from_response({})).to eq([])
     end
   end
 
   describe "equality" do
-    it "considers tracking categories with the same attributes equal" do
-      a = described_class.new(full_attrs)
-      b = described_class.new(full_attrs)
-
-      expect(a).to eq(b)
-      expect(a.hash).to eq(b.hash)
-    end
-
-    it "considers tracking categories with different attributes unequal" do
-      a = described_class.new(full_attrs)
-      b = described_class.new(full_attrs.merge("Option" => "Other"))
-
-      expect(a).not_to eq(b)
+    it "matches on tracking_category_id alone" do
+      expect(described_class.new(attrs.merge("Name" => "Renamed"))).to eq(category)
     end
   end
 
-  describe "#inspect" do
-    it "includes the name and option" do
-      tc = described_class.new(full_attrs)
+  # The nested assignment shape shares a name and an ID field with this one
+  # and nothing else. Keeping them distinct is the whole point of the split.
+  describe "against Accounting::Tracking" do
+    it "is a different class from the nested assignment shape" do
+      expect(described_class).not_to eq(XeroKiwi::Accounting::Tracking)
+    end
 
-      expect(tc.inspect).to include("name=")
-      expect(tc.inspect).to include("option=")
+    it "does not carry the assignment's chosen-option fields" do
+      expect(category).not_to respond_to(:tracking_option_id)
     end
   end
 end

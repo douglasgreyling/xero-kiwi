@@ -21,7 +21,7 @@ module XeroKiwi
       attribute :line_amount,     xero: "LineAmount",     type: :decimal
       attribute :discount_rate,   xero: "DiscountRate",   type: :decimal
       attribute :discount_amount, xero: "DiscountAmount", type: :decimal
-      attribute :tracking,        xero: "Tracking",       type: :collection, of: TrackingCategory
+      attribute :tracking,        xero: "Tracking",       type: :collection, of: Tracking
       attribute :item,            xero: "Item"
     end
   end

@@ -84,8 +84,9 @@ module Llms
                "`TokenRefreshError`, `RateLimitError`, `OAuth::StateMismatchError`, `OAuth::CodeExchangeError`, " \
                "`OAuth::IDTokenError`, `Throttle::Timeout`, `Throttle::DailyLimitExhausted`), what to catch when" },
     { path: "docs/retries-and-rate-limits.md", title: "Retries and rate limits",
-      summary: "how XeroKiwi handles 429s and transient 5xxs, `client.rate_limit(tenant_id)` for remaining quota, tuning the " \
-               "retry policy, the Faraday middleware ordering, why 500 is deliberately not retried",
+      summary: "how XeroKiwi handles 429s and transient 5xxs, `client.rate_limit(tenant_id)` for remaining quota (process-local), " \
+               "recording a durable per-tenant back-off signal from the `tenant_id` and `retry_after` carried by RateLimitError " \
+               "and the throttle errors, tuning the retry policy, the Faraday middleware ordering, why 500 is deliberately not retried",
       optional: true },
     { path: "docs/throttling.md", title: "Throttling",
       summary: "the Redis-backed per-tenant token bucket for coordinating rate limits across processes, `default_throttle`, " \

@@ -113,6 +113,42 @@ default `redis://127.0.0.1:6379/15`.
 docker compose down          # when you're done
 ```
 
+### Releasing
+
+**Merge first, then bump.** `rake release` tags whatever is checked out, so a
+version bump that rides along inside a pull request gets orphaned the moment
+that PR is squash-merged — the squash creates a new commit and the tag is left
+pointing at the pre-merge branch commit, unreachable from `main`. Bumping after
+the merge makes that impossible regardless of merge strategy.
+
+So: land the work through a PR as normal, then
+
+```sh
+git checkout main && git pull
+```
+
+1. Bump `VERSION` in [lib/xero_kiwi/version.rb](lib/xero_kiwi/version.rb).
+2. Move the `[Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a
+   dated version heading.
+3. `bundle install` to refresh the lockfile's `xero-kiwi (x.y.z)`.
+4. `bundle exec rake` — specs, RuboCop, and the `llms:check` freshness guard.
+5. Commit to `main`. A commit-msg hook requires the `crimesjohnson:` prefix
+   there, so: `crimesjohnson: release x.y.z with <the headline>`.
+
+```sh
+bundle exec rake release     # builds, tags, pushes the tag, publishes
+```
+
+The gemspec sets `rubygems_mfa_required`, so this prompts for an OTP and can't
+run unattended. Finally, cut the GitHub release from the changelog section:
+
+```sh
+gh release create vx.y.z --title "vx.y.z — <headline>" --notes-file <(…) --verify-tag --latest
+```
+
+Note that `docs/` ships inside the gem, so a documentation-only fix still needs
+a patch release to reach anyone — it won't arrive through GitHub alone.
+
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at

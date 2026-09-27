@@ -239,12 +239,6 @@ RSpec.describe XeroKiwi::Client do
       expect(contact.raw["ContactPersons"]).to eq([{ "FirstName" => "Ada", "LastName" => "Lovelace" }])
     end
 
-    it "is frozen so a caller can't mutate what Xero sent" do
-      contact = client(retain_raw: true).contacts(tenant_id).first
-
-      expect(contact.raw).to be_frozen
-    end
-
     # to_h is a snake_case projection rebuilt from the modelled attributes.
     # Storing it where a caller meant to store the payload changes both the
     # keys and the nesting, and every reader then fails by returning nil.
@@ -268,6 +262,32 @@ RSpec.describe XeroKiwi::Client do
       contact = client(retain_raw: true).contacts(tenant_id).first
 
       expect(contact.raw).not_to have_key("Contacts")
+    end
+
+    # Documented contract. A consumer mapped #raw over a nested collection,
+    # got [nil], and was one step from storing it — so pin the behaviour and
+    # the access path that replaces it.
+    it "is nil on nested objects, which are reached through the parent", :aggregate_failures do
+      contact = client(retain_raw: true).contacts(tenant_id).first
+
+      expect(contact.contact_persons.map(&:raw)).to eq([nil])
+      expect(contact.raw["ContactPersons"]).to eq([{ "FirstName" => "Ada", "LastName" => "Lovelace" }])
+    end
+
+    it "leaves absent keys absent rather than defaulting them" do
+      stub_request(:get, contacts_endpoint)
+        .to_return(status: 200, body: JSON.dump("Contacts" => [{ "ContactID" => "c1" }]), headers: json_headers)
+
+      expect(client(retain_raw: true).contacts(tenant_id).first.raw).not_to have_key("Addresses")
+    end
+
+    # The freeze is shallow. Saying so in the docs is only worth anything if
+    # something fails when it stops being true.
+    it "freezes the hash itself but not the structures inside it", :aggregate_failures do
+      contact = client(retain_raw: true).contacts(tenant_id).first
+
+      expect(contact.raw).to be_frozen
+      expect(contact.raw["ContactPersons"]).not_to be_frozen
     end
   end
 

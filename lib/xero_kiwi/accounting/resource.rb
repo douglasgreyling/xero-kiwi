@@ -139,10 +139,22 @@ module XeroKiwi
       # arrived, or nil unless the client was built with `retain_raw: true`.
       # Use it to reach fields the gem doesn't model.
       #
+      # Returns nil on NESTED objects even when retain_raw is on — line
+      # items, addresses, contact persons, payment terms. Reach those
+      # through the enclosing resource instead:
+      #
+      #   org.addresses.map(&:raw)  # => [nil]
+      #   org.raw["Addresses"]      # => [{"AddressType" => "POBOX", ...}]
+      #
       # Scope is the item, NOT the enclosing envelope: `contact.raw` has no
       # "Contacts" key, and `organisation.raw` no "Organisations" key. Kiwi
       # unwraps the envelope before a resource is built, so there is nothing
       # left of it by the time this is populated.
+      #
+      # Kiwi never normalises what it stores here: absent keys stay absent
+      # rather than becoming [] or nil entries, and keys the gem doesn't
+      # model are preserved. The hash itself is frozen; the structures
+      # nested inside it are not.
       #
       # It is also the JSON representation specifically. Kiwi sends
       # `Accept: application/json`; Xero's XML representation nests

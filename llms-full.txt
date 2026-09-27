@@ -355,6 +355,18 @@ Five things to know:
   the envelope before building a resource, so there's nothing left of it by
   the time `raw` is populated. If you need the envelope back, you're
   rebuilding it yourself.
+- **Nested objects return `nil`, even with `retain_raw: true`.** Line
+  items, addresses, contact persons and payment terms do not carry their
+  own payload. Reach them through the enclosing resource's hash:
+
+  ```ruby
+  org.addresses.map(&:raw)   # => [nil]   ← not what you want
+  org.raw["Addresses"]       # => [{"AddressType" => "POBOX", …}]
+  ```
+
+  This is deliberate — see [why nested objects don't carry
+  raw](#why-nested-objects-dont-carry-raw) — but it fails quietly, so it's
+  worth knowing before you map over a collection and store the result.
 - **It's the JSON representation.** Kiwi sends
   `Accept: application/json`. Xero also serves XML, which nests
   differently — XML has no arrays, so a single child parses to a Hash and
@@ -365,13 +377,45 @@ Five things to know:
   the modelled attributes — different keys, different nesting. If you store
   `to_h` where you meant to store the payload, readers fail by returning
   nil rather than raising.
-- **It's per resource, not per nested object.** Line items, addresses and
-  contact persons have no `#raw` of their own. They don't need one: the
-  resource's hash already holds every nested payload, so
-  `contact.raw["ContactPersons"]` gets there.
 - **It costs memory.** Every resource holds its source hash alongside the
   hydrated attributes, which roughly doubles the footprint of a large page.
   That's why it's off by default.
+
+### What `raw` guarantees
+
+Depend on these; they won't change without a major version.
+
+- It is the parsed JSON for that resource, with **only the top-level keys
+  stringified**. Everything nested is exactly what `JSON.parse` produced.
+- **Kiwi does not normalise it.** No key renaming, no defaulting, no
+  filling in of absent keys. If Xero omits `Addresses`, `raw` has no
+  `"Addresses"` key — it does not become `[]`. If Xero sends `[]`, you get
+  `[]`. `raw.fetch("Addresses", [])` and `raw["Addresses"] || []` are both
+  safe and mean the same thing here.
+- Keys the gem doesn't model are preserved. That's the point of it.
+- The top-level hash is **frozen; nested structures are not**. `raw` itself
+  can't be mutated, but `raw["Addresses"]` is an ordinary mutable Array.
+  Dup before mutating if that matters to you.
+
+The one thing deliberately *not* guaranteed is the presence of `raw` on
+nested objects, per the bullet above.
+
+### Why nested objects don't carry raw
+
+Two reasons, both worth knowing if you're tempted to ask for it.
+
+It would cost real memory on the workload `retain_raw` exists for. A page
+of 1,000 invoices with five line items each retains about 3.4 MB with
+top-level raw; giving every nested object its own hash adds about 1.6 MB
+on top, roughly half again, and that's on a flag that has already doubled
+your footprint.
+
+More importantly it couldn't be done consistently. Several attributes —
+`payment_terms` on Contact and Organisation, `invoice_addresses` on
+Invoice — hydrate through custom lambdas that construct their objects
+directly, so they'd stay `nil` while their siblings worked. "Nested
+objects never carry raw" is a rule you can hold in your head. "Nested
+objects carry raw except these four" is not.
 
 ### Migrating from an XML-based client
 

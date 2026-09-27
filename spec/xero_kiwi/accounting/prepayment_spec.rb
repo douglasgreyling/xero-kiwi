@@ -18,7 +18,7 @@ RSpec.describe XeroKiwi::Accounting::Prepayment do
       "CurrencyRate"    => "1.000000",
       "InvoiceNumber"   => "INV-0001",
       "RemainingCredit" => "0.00",
-      "Allocations"     => [{ "Amount" => "100.00", "Date" => "/Date(1222340661707+0000)/" }],
+      "Allocations"     => [{ "AppliedAmount" => "100.00", "Date" => "/Date(1222340661707+0000)/" }],
       "Payments"        => [],
       "HasAttachments"  => false,
       "FullyPaidOnDate" => "/Date(1222340661707+0000)/"
@@ -95,7 +95,7 @@ RSpec.describe XeroKiwi::Accounting::Prepayment do
 
     it "wraps allocations as XeroKiwi::Accounting::Allocation objects" do
       expect(prepayment.allocations).to all(be_a(XeroKiwi::Accounting::Allocation))
-      expect(prepayment.allocations.first.amount).to eq("100.00")
+      expect(prepayment.allocations.first.applied_amount).to eq("100.00")
     end
 
     it "defaults collection attributes to empty arrays when absent" do

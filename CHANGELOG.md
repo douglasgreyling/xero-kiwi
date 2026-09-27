@@ -1,5 +1,21 @@
 ## [Unreleased]
 
+### Fixed
+
+- **`Accounting::Allocation#amount` always returned nil.** It was mapped to Xero's `"Amount"`, which is the key for the allocation *request* body. Every response — and allocations only ever reach this gem embedded in a CreditNote, Prepayment or Overpayment response — carries `"AppliedAmount"`. The allocated value is now modelled as **`applied_amount`**, and `#amount` is an alias of it so callers who reached for the obvious name get the value they meant. Nothing that depended on a real value is affected, because there was never one to depend on.
+
+  This mattered more than a missing field usually would: `allocations.map(&:amount)` returned an array of nils rather than raising, so an importer would have written zeroes into every allocated amount with nothing failing anywhere. Reported by a consumer who checked stored payloads before trusting the typed path.
+
+  Four spec files had fabricated `"Amount"` payloads and so agreed with the bug instead of catching it; all now use the real response shape.
+
+### Breaking
+
+- `Allocation#to_h` now carries `:applied_amount` instead of `:amount`, and `:amount` is no longer a declared attribute (it is a plain reader, so one value maps to one key). Anyone reading `to_h[:amount]` was reading nil.
+
+### Documentation
+
+- The README now documents the release process. It covered running specs but said nothing about cutting a release, so the sequencing lived only in one person's head. It leads with the rule and the reason — `rake release` tags whatever is checked out, so a version bump riding along in a pull request gets orphaned the moment that PR is squash-merged, which is what happened to v0.5.2 — and records the thing that is not guessable from the repo: `docs/` ships inside the gem, so a documentation-only fix still needs a patch release to reach anyone.
+
 ## [0.5.2] - 2026-09-27
 
 ### Documentation

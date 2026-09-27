@@ -141,6 +141,13 @@ Metrics/BlockLength:
 Metrics/ClassLength:
   Max: 700
 
+# tasks/llms.rb is mostly a documentation manifest and a prose template.
+# Counting a data table against a module-length budget would only push the
+# data into a second file for no reader's benefit.
+Metrics/ModuleLength:
+  Exclude:
+    - 'tasks/llms.rb'
+
 Metrics/MethodLength:
   Max: 15
 

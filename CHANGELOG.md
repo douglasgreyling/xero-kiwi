@@ -4,6 +4,7 @@
 
 - Documented that `Resource#raw` returns nil on nested objects (line items, addresses, contact persons, payment terms) even with `retain_raw: true`, and that the enclosing resource's hash is the access path — `org.raw["Addresses"]` rather than `org.addresses.map(&:raw)`. The behaviour was deliberate and explained in a comment on `from_response`, but the `#raw` docstring never mentioned it and the failure is a silent nil, so a consumer mapped over a nested collection and was one step from storing `[null]`.
 - Added a written contract for `raw` in `docs/client.md`: it is the parsed JSON with only top-level keys stringified, kiwi never normalises it (absent keys stay absent rather than becoming `[]`), unmodelled keys are preserved, and the freeze is shallow — the hash is frozen, the structures inside it are not. Specs pin all four, plus the nested-nil behaviour. The previous "is frozen" example overstated the guarantee and has been replaced.
+- `llms.txt` is now generated alongside `llms-full.txt` from a single manifest in `tasks/llms.rb`, rather than hand-maintained. It had not been touched since the initial commit and was missing four releases of material — no `querying.md`, no `throttling.md`, no `tracking-category.md`, and no mention of `Page`, `RateLimit`, the throttle limiters or the tracking classes. `rake llms:check` now also fails when a doc exists under `docs/` that the manifest does not list, which is the half that was missing: the freshness check could not notice a doc that was never indexed in the first place.
 
 ## [0.5.1] - 2026-09-26
 

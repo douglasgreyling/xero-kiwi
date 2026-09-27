@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-27
+
 ### Documentation
 
 - Documented that `Resource#raw` returns nil on nested objects (line items, addresses, contact persons, payment terms) even with `retain_raw: true`, and that the enclosing resource's hash is the access path — `org.raw["Addresses"]` rather than `org.addresses.map(&:raw)`. The behaviour was deliberate and explained in a comment on `from_response`, but the `#raw` docstring never mentioned it and the failure is a silent nil, so a consumer mapped over a nested collection and was one step from storing `[null]`.

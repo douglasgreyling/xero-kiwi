@@ -17,7 +17,7 @@ RSpec.describe XeroKiwi::Accounting::Overpayment do
       "CurrencyCode"    => "NZD",
       "CurrencyRate"    => "1.000000",
       "RemainingCredit" => "0.00",
-      "Allocations"     => [{ "AllocationID" => "b12335f4", "Amount" => "100.00" }],
+      "Allocations"     => [{ "AllocationID" => "b12335f4", "AppliedAmount" => "100.00" }],
       "Payments"        => [],
       "HasAttachments"  => false,
       "Reference"       => "Overpayment Reference"
@@ -93,7 +93,7 @@ RSpec.describe XeroKiwi::Accounting::Overpayment do
 
     it "wraps allocations as XeroKiwi::Accounting::Allocation objects" do
       expect(overpayment.allocations).to all(be_a(XeroKiwi::Accounting::Allocation))
-      expect(overpayment.allocations.first.amount).to eq("100.00")
+      expect(overpayment.allocations.first.applied_amount).to eq("100.00")
     end
 
     it "defaults collection attributes to empty arrays when absent" do

@@ -23,7 +23,7 @@ RSpec.describe XeroKiwi::Accounting::CreditNote do
       "Reference"        => "REF-001",
       "SentToContact"    => true,
       "RemainingCredit"  => 0.00,
-      "Allocations"      => [{ "AllocationID" => "b12335f4", "Amount" => 100.00 }],
+      "Allocations"      => [{ "AllocationID" => "b12335f4", "AppliedAmount" => 100.00 }],
       "BrandingThemeID"  => "dfe23d27-a3a6-4ef3-a5ca-b9e02b142dde",
       "HasAttachments"   => false
     }
@@ -101,7 +101,7 @@ RSpec.describe XeroKiwi::Accounting::CreditNote do
 
     it "wraps allocations as XeroKiwi::Accounting::Allocation objects" do
       expect(credit_note.allocations).to all(be_a(XeroKiwi::Accounting::Allocation))
-      expect(credit_note.allocations.first.amount).to eq(100.00)
+      expect(credit_note.allocations.first.applied_amount).to eq(100.00)
     end
 
     it "defaults collection attributes to empty arrays when absent" do

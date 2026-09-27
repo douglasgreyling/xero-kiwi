@@ -61,7 +61,7 @@ fields Xero returns:
 | `reference` | `String` | Additional reference number (ACCRECCREDIT only). |
 | `sent_to_contact` | `Boolean` | Whether the credit note has been sent to the contact. |
 | `remaining_credit` | `Numeric` | The remaining credit balance. |
-| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each allocation has an `invoice` reference. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, `applied_amount`, `date`, `is_deleted`, and an `invoice` reference. |
 | `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
 | `has_attachments` | `Boolean` | Whether the credit note has attachments. |
 

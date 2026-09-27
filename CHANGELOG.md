@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Fixed
+
+- **`Accounting::Allocation#amount` always returned nil.** It was mapped to Xero's `"Amount"`, which is the key for the allocation *request* body. Every response — and allocations only ever reach this gem embedded in a CreditNote, Prepayment or Overpayment response — carries `"AppliedAmount"`. The allocated value is now modelled as **`applied_amount`**, and `#amount` is an alias of it so callers who reached for the obvious name get the value they meant. Nothing that depended on a real value is affected, because there was never one to depend on.
+
+  This mattered more than a missing field usually would: `allocations.map(&:amount)` returned an array of nils rather than raising, so an importer would have written zeroes into every allocated amount with nothing failing anywhere. Reported by a consumer who checked stored payloads before trusting the typed path.
+
+  Four spec files had fabricated `"Amount"` payloads and so agreed with the bug instead of catching it; all now use the real response shape.
+
+### Breaking
+
+- `Allocation#to_h` now carries `:applied_amount` instead of `:amount`, and `:amount` is no longer a declared attribute (it is a plain reader, so one value maps to one key). Anyone reading `to_h[:amount]` was reading nil.
+
 ## [0.5.2] - 2026-09-27
 
 ### Documentation

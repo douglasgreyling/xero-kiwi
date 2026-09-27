@@ -22,12 +22,18 @@ module XeroKiwi
   # should treat this as "the user must re-authorise" and surface accordingly.
   class TokenRefreshError < AuthenticationError; end
 
+  # Raised when Xero returns 429 and the retry middleware has exhausted its
+  # attempts. Carries everything needed to record a durable back-off signal —
+  # which tenant, for how long, and which of Xero's three limits was hit —
+  # without the caller inferring any of it from context. See
+  # docs/retries-and-rate-limits.md for the persistence pattern.
   class RateLimitError < APIError
-    attr_reader :retry_after, :problem
+    attr_reader :retry_after, :problem, :tenant_id
 
-    def initialize(status, body, retry_after: nil, problem: nil)
+    def initialize(status, body, retry_after: nil, problem: nil, tenant_id: nil)
       @retry_after = retry_after
       @problem     = problem
+      @tenant_id   = tenant_id
       super(status, body, "Xero rate limit hit (#{problem || "unknown"}); retry after #{retry_after}s")
     end
   end

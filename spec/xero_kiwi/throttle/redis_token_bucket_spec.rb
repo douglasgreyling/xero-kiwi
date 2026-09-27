@@ -146,6 +146,31 @@ RSpec.describe XeroKiwi::Throttle::RedisTokenBucket do
         expect { build_bucket.remaining("") }.to raise_error(ArgumentError)
       end
     end
+
+    # Both throttle errors name the tenant they relate to, so a caller
+    # recording a durable back-off signal doesn't have to infer it from
+    # surrounding context.
+    describe "exception context" do
+      it "names the tenant and the wait on DailyLimitExhausted", :aggregate_failures do
+        bucket = build_bucket(per_day: 1)
+        bucket.acquire("tenant-A")
+
+        expect { bucket.acquire("tenant-A") }.to raise_error(XeroKiwi::Throttle::DailyLimitExhausted) { |error|
+          expect(error.tenant_id).to eq("tenant-A")
+          expect(error.retry_after).to be > 0
+        }
+      end
+
+      it "names the tenant and the wait on Timeout", :aggregate_failures do
+        bucket = build_bucket(max_wait: 0.0)
+        2.times { bucket.acquire("tenant-B") }
+
+        expect { bucket.acquire("tenant-B") }.to raise_error(XeroKiwi::Throttle::Timeout) { |error|
+          expect(error.tenant_id).to eq("tenant-B")
+          expect(error.retry_after).to be > 0
+        }
+      end
+    end
   end
 
   context "when Redis raises (fail-open path)" do

@@ -978,7 +978,8 @@ module XeroKiwi
           env.status,
           env.body,
           retry_after: env.response_headers["retry-after"]&.to_f,
-          problem:     env.response_headers["x-rate-limit-problem"]
+          problem:     env.response_headers["x-rate-limit-problem"],
+          tenant_id:   env.request_headers[Throttle::Middleware::TENANT_HEADER]
         )
       end
     end

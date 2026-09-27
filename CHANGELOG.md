@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Added
+
+- `RateLimitError`, `Throttle::DailyLimitExhausted` and `Throttle::Timeout` now carry the **`tenant_id`** they relate to, and `Throttle::Timeout` also carries **`retry_after`** (it previously carried nothing at all). A caller recording a durable back-off signal — "this tenant is paused until T, because X" — now gets every fact from the exception instead of inferring the tenant from surrounding context, which breaks as soon as one client serves more than one tenant. `docs/retries-and-rate-limits.md` gains a section on the pattern.
+- Documented that `client.rate_limit` is **process-local**. The reported figures live in memory on the `Client` that made the request, so a worker's reading dies with the job. That is fine for "should this loop stop early?", which is what it is for, and is not a way to tell a web request that a tenant is backed off.
+
 ## [0.6.0] - 2026-09-27
 
 ### Fixed

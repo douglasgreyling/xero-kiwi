@@ -68,6 +68,59 @@ When neither source has a reading, `day_remaining` is nil and
 reason to halt a sync, and halting would break the common case where the
 first call is what populates the figures.
 
+**`client.rate_limit` is process-local.** The reported figures live in
+memory on the `Client` that made the request, so a Sidekiq worker's reading
+is gone when the job ends and no other process can see it. That's fine for
+"should this loop stop early?", which is what it's for. It is not a way to
+tell a web request that a tenant is currently backed off — for that, see
+below.
+
+## Recording a durable back-off signal
+
+If something outside your sync needs to know a tenant is backed off — a
+dashboard badge, an API response carrying its own `Retry-After`, a guard
+that refuses to start another sync — you need a record that outlives the
+process that observed it.
+
+Kiwi deliberately doesn't keep that record for you, but it gives you
+everything needed to keep one. Both back-off exceptions name the tenant,
+say how long, and say which limit was hit:
+
+```ruby
+begin
+  client.each_invoice_page(tenant_id) { |page| import(page) }
+rescue XeroKiwi::RateLimitError => e
+  # Xero said so. e.problem is "minute" / "day" / "appminute".
+  BackoffRecord.set(e.tenant_id, seconds: e.retry_after || 60, source: :reported)
+  raise
+rescue XeroKiwi::Throttle::DailyLimitExhausted => e
+  # Our own configured day bucket ran out, before a request went out.
+  BackoffRecord.set(e.tenant_id, seconds: e.retry_after, source: :configured)
+  raise
+end
+```
+
+Your readers then hit that record directly and never need a `Client`.
+
+Three things worth knowing when you write this:
+
+- **Only surfaced errors are worth recording.** The retry middleware absorbs
+  transient 429s internally and succeeds, so those never reach your rescue —
+  which is what you want. Recording every observed 429 would flash "paused"
+  at users for something already handled.
+- **`retry_after` can be nil.** Xero usually sends `Retry-After` but isn't
+  guaranteed to, so pick your own fallback. Kiwi doesn't invent one, because
+  the number you choose is the number your users see as the pause duration —
+  that's your decision, not the library's. Watch for a zero-second TTL if
+  you store this in Redis; `SETEX` rejects it.
+- **`tenant_id` is on the exception for a reason.** Don't infer it from
+  surrounding context — that breaks the moment one client serves more than
+  one tenant.
+
+`XeroKiwi::Throttle::Timeout` carries `tenant_id` and `retry_after` too, if
+you want to treat a per-minute wait that exceeded `max_wait` as a back-off
+rather than as an error.
+
 ## What Xero Kiwi does automatically
 
 Xero Kiwi sets up a `faraday-retry` middleware that handles transient failures

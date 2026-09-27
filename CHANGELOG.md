@@ -12,6 +12,10 @@
 
 - `Allocation#to_h` now carries `:applied_amount` instead of `:amount`, and `:amount` is no longer a declared attribute (it is a plain reader, so one value maps to one key). Anyone reading `to_h[:amount]` was reading nil.
 
+### Documentation
+
+- The README now documents the release process. It covered running specs but said nothing about cutting a release, so the sequencing lived only in one person's head. It leads with the rule and the reason — `rake release` tags whatever is checked out, so a version bump riding along in a pull request gets orphaned the moment that PR is squash-merged, which is what happened to v0.5.2 — and records the thing that is not guessable from the repo: `docs/` ships inside the gem, so a documentation-only fix still needs a patch release to reach anyone.
+
 ## [0.5.2] - 2026-09-27
 
 ### Documentation

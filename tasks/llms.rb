@@ -28,7 +28,7 @@ module Llms
   # budget can skip. It has no effect on llms-full.txt.
   DOCS = [
     { path: "README.md", title: "README",
-      summary: "high-level overview, installation, and the documentation table of contents",
+      summary: "high-level overview, installation, the documentation table of contents, and the development and release process",
       optional: true },
     { path: "docs/getting-started.md", title: "Getting started",
       summary: "installation, the mental model, and a full end-to-end example from authorise to first API call" },

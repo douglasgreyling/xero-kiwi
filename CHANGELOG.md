@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-27
+
 ### Fixed
 
 - **`Accounting::Allocation#amount` always returned nil.** It was mapped to Xero's `"Amount"`, which is the key for the allocation *request* body. Every response — and allocations only ever reach this gem embedded in a CreditNote, Prepayment or Overpayment response — carries `"AppliedAmount"`. The allocated value is now modelled as **`applied_amount`**, and `#amount` is an alias of it so callers who reached for the obvious name get the value they meant. Nothing that depended on a real value is affected, because there was never one to depend on.

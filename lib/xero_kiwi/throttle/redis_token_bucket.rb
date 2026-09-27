@@ -133,7 +133,7 @@ module XeroKiwi
           failed, wait_ms = evaluate(key)
           return if failed.zero?
 
-          waited_ms = handle_failure(failed, wait_ms, waited_ms)
+          waited_ms = handle_failure(failed, wait_ms, waited_ms, key)
         end
       rescue Redis::BaseError => e
         log_redis_failure(e)
@@ -158,17 +158,24 @@ module XeroKiwi
 
       private
 
-      def handle_failure(failed, wait_ms, waited_ms)
+      # `key` is threaded down purely so the exceptions can name the tenant
+      # they relate to. A caller recording a durable back-off signal needs it,
+      # and inferring it from surrounding context breaks the moment one client
+      # serves more than one tenant.
+      def handle_failure(failed, wait_ms, waited_ms, key)
         case failed
-        when 1 then wait_for_minute_bucket(wait_ms, waited_ms)
-        when 2 then raise Throttle::DailyLimitExhausted.new(retry_after: wait_ms / 1000.0)
+        when 1 then wait_for_minute_bucket(wait_ms, waited_ms, key)
+        when 2 then raise Throttle::DailyLimitExhausted.new(retry_after: wait_ms / 1000.0, tenant_id: key)
         end
       end
 
-      def wait_for_minute_bucket(wait_ms, waited_ms)
+      def wait_for_minute_bucket(wait_ms, waited_ms, key)
         if (waited_ms + wait_ms) / 1000.0 > @max_wait
-          raise Throttle::Timeout,
-                "waited #{(waited_ms / 1000.0).round(2)}s for rate-limit token, exceeds max_wait=#{@max_wait}s"
+          raise Throttle::Timeout.new(
+            "waited #{(waited_ms / 1000.0).round(2)}s for rate-limit token, exceeds max_wait=#{@max_wait}s",
+            tenant_id:   key,
+            retry_after: wait_ms / 1000.0
+          )
         end
 
         @sleeper.call((wait_ms + POLL_MS) / 1000.0)

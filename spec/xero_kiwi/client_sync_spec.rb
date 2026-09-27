@@ -358,6 +358,43 @@ RSpec.describe XeroKiwi::Client do
     end
   end
 
+  # A caller recording a durable back-off signal — "this tenant is paused
+  # until T, because X" — needs all three facts on the exception. Inferring
+  # the tenant from surrounding context breaks as soon as one client serves
+  # more than one.
+  describe "RateLimitError context" do
+    let(:limited_client) do
+      client(retry_options: { max: 0, interval: 0, interval_randomness: 0, backoff_factor: 1 })
+    end
+
+    def stub_429(headers)
+      stub_request(:get, invoices_endpoint)
+        .to_return(status: 429, body: "{}", headers: json_headers.merge(headers))
+    end
+
+    it "names the tenant, the wait, and which limit was hit", :aggregate_failures do
+      stub_429("Retry-After" => "42", "X-Rate-Limit-Problem" => "minute")
+
+      expect { limited_client.invoices(tenant_id) }.to raise_error(XeroKiwi::RateLimitError) { |error|
+        expect(error.tenant_id).to eq(tenant_id)
+        expect(error.retry_after).to eq(42.0)
+        expect(error.problem).to eq("minute")
+      }
+    end
+
+    # Xero usually sends Retry-After but isn't guaranteed to. The caller then
+    # has to choose a fallback duration, which is why the gem doesn't try to
+    # invent one — see docs/retries-and-rate-limits.md.
+    it "still names the tenant when Xero sends no Retry-After", :aggregate_failures do
+      stub_429({})
+
+      expect { limited_client.invoices(tenant_id) }.to raise_error(XeroKiwi::RateLimitError) { |error|
+        expect(error.tenant_id).to eq(tenant_id)
+        expect(error.retry_after).to be_nil
+      }
+    end
+  end
+
   describe "tracking categories" do
     let(:endpoint) { "https://api.xero.com/api.xro/2.0/TrackingCategories" }
     let(:payload) do

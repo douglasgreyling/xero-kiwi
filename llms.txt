@@ -65,6 +65,6 @@ XeroKiwi requires Ruby 3.4.1 or newer. Install with `gem "xero-kiwi"`.
 ## Optional
 
 - [README](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/README.md): high-level overview, installation, the documentation table of contents, and the development and release process
-- [Retries and rate limits](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/retries-and-rate-limits.md): how XeroKiwi handles 429s and transient 5xxs, `client.rate_limit(tenant_id)` for remaining quota, tuning the retry policy, the Faraday middleware ordering, why 500 is deliberately not retried
+- [Retries and rate limits](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/retries-and-rate-limits.md): how XeroKiwi handles 429s and transient 5xxs, `client.rate_limit(tenant_id)` for remaining quota (process-local), recording a durable per-tenant back-off signal from the `tenant_id` and `retry_after` carried by RateLimitError and the throttle errors, tuning the retry policy, the Faraday middleware ordering, why 500 is deliberately not retried
 - [Throttling](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/docs/throttling.md): the Redis-backed per-tenant token bucket for coordinating rate limits across processes, `default_throttle`, `#remaining`, fail-open behaviour, writing a custom limiter
 - [CHANGELOG](https://raw.githubusercontent.com/douglasgreyling/xero-kiwi/main/CHANGELOG.md): version history

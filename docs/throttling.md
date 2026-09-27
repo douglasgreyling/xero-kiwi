@@ -132,8 +132,9 @@ is fine. If the wait would exceed `max_wait`, it raises
 probably too many concurrent workers for the configured `per_minute`.
 
 **Per-day:** the limiter raises `XeroKiwi::Throttle::DailyLimitExhausted`
-immediately, with a `retry_after` attribute in seconds. Sleeping for hours is
-never the right move in a Sidekiq worker, so the caller has to decide:
+immediately, with `retry_after` in seconds and the `tenant_id` it relates to.
+Sleeping for hours is never the right move in a Sidekiq worker, so the caller
+has to decide:
 
 ```ruby
 begin
@@ -145,8 +146,17 @@ rescue XeroKiwi::Throttle::DailyLimitExhausted => e
 end
 ```
 
-This mirrors the `XeroKiwi::RateLimitError` shape that the retry layer raises
-after exhausting retries on a 429, so the handling code is familiar.
+Both throttle exceptions carry `tenant_id` and `retry_after`, which mirrors
+the `XeroKiwi::RateLimitError` shape the retry layer raises after exhausting
+retries on a 429 — so one rescue can cover both, and code handling them looks
+the same.
+
+If something outside the sync needs to know a tenant is backed off, see
+[recording a durable back-off
+signal](retries-and-rate-limits.md#recording-a-durable-back-off-signal).
+`#remaining` is not that: it only knows about calls made through this
+limiter, so a tenant another application has rate limited looks healthy to
+your own bucket.
 
 ## Redis key layout
 

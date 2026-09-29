@@ -14,6 +14,8 @@
 
 ### Fixed
 
+- `RateLimitCapture` now finds Xero's quota headers whatever case they arrive in. Faraday's own header container is case-insensitive so production was never affected, but a plain Hash is not, and Xero's headers are cased differently depending on who recorded them — a VCR cassette holds `X-Daylimit-Remaining`, not `X-DayLimit-Remaining`. Missing them records nothing, and `day_below?` answers false when nothing is known, so the failure would have been a quota check that passes while measuring nothing. Spotted by a consumer reading their own recorded cassettes against the lookup.
+
 - **`Allocation#applied_amount` was nil for every allocation — 0.6.0 fixed the name and kept the bug.** Xero sends the allocated value under `"Amount"` in JSON and `"AppliedAmount"` in XML. 0.6.0 concluded the opposite, from payloads a legacy XML client had stored, and remapped the attribute to a key this JSON-only client never receives. Before 0.6.0 the mapping was right. Measured on a live tenant: 24 of 24 allocations carry `Amount`, none carry `AppliedAmount`, on both the list and single-resource endpoints.
 
   Both keys are now modelled and **both `#amount` and `#applied_amount` resolve to whichever one arrived**, so neither can be nil while the other holds a value. This has been got wrong twice in opposite directions, each time producing a nil that an importer coerced to `0.0` and stored with nothing raising; reading both is cheaper than being certain. `to_h` reports the value under both keys, and `raw` still shows which key Xero sent.

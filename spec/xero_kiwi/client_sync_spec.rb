@@ -356,6 +356,40 @@ RSpec.describe XeroKiwi::Client do
     it "requires a tenant id" do
       expect { client.rate_limit("") }.to raise_error(ArgumentError, /tenant_id is required/)
     end
+
+    # Xero's headers come back cased differently depending on who recorded
+    # them — a VCR cassette holds "X-Daylimit-Remaining", not
+    # "X-DayLimit-Remaining". Faraday's container is case-insensitive so
+    # production is fine, but missing them records nothing, and day_below?
+    # answers false when nothing is known. The result would be a quota check
+    # that passes while measuring nothing.
+    it "captures the figures whatever case the headers arrive in" do
+      stub_request(:get, invoices_endpoint).to_return(
+        status:  200,
+        body:    JSON.dump(invoice_body(%w[a])),
+        headers: json_headers.merge("X-Daylimit-Remaining" => "4929", "X-Minlimit-Remaining" => "58")
+      )
+
+      c = client
+      c.invoices(tenant_id)
+
+      expect(c.rate_limit(tenant_id)).to have_attributes(day_remaining: 4_929, minute_remaining: 58)
+    end
+
+    # Guards the shape of the failure rather than the behaviour: an
+    # unpopulated store still answers day_below? => false, so asserting on
+    # the answer alone cannot tell "quota is fine" from "we read nothing".
+    it "records a reading rather than merely answering", :aggregate_failures do
+      stub_request(:get, invoices_endpoint).to_return(
+        status: 200, body: JSON.dump(invoice_body(%w[a])), headers: quota_headers
+      )
+
+      c = client
+      c.invoices(tenant_id)
+
+      expect(c.rate_limit(tenant_id).known?).to be(true)
+      expect(c.rate_limit(tenant_id).reported).not_to be_nil
+    end
   end
 
   # A caller recording a durable back-off signal — "this tenant is paused

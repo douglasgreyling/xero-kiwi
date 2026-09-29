@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Documentation
+
+- Added the four value-object docs — Address, Phone, ExternalLink, PaymentTerms — to the README's documentation table. They existed, were in the `llms.txt` manifest and were reachable from the generated bundles, while being invisible to anyone reading the README. `rake llms:check` now fails when a doc in the manifest is not linked from the README, which is the third index to get a drift guard.
+
 ## [0.8.0] - 2026-09-29
 
 ### Breaking

@@ -24,9 +24,21 @@
 
   Found by the coverage task below rather than by comparison or by reading Xero's docs — the key is in no doc table, because the docs describe the XML representation and this shape only exists in JSON.
 
+- **`LineItem#account_id` was reading a key Xero does not send.** It mapped to `"AccountId"`; Xero sends `"AccountID"`, so the attribute was `nil` on every line item ever returned. The string `AccountId` appears **zero times** in Xero's 911K OpenAPI spec, and a consumer's recorded JSON response carries `AccountID` on all 18 of its populated line items.
+
+  No recording in this repo could have caught it: list endpoints omit line items, so `LineItem` has never had a real payload here. It was found by comparing the classes against Xero's published spec, which is now `rake xero:schema`.
+
 ### Added
 
 - `Accounting::Organisation` now models `tax_number_name`, which names what the organisation's locale calls its tax number (`"VAT Number"` on the recorded tenant). Present and populated in the recording, previously reachable only through `raw`.
+
+- Fields Xero's spec documents and the recordings confirm on every record, all previously reachable only through `raw`: `Invoice#is_discounted`, `Invoice#has_errors`, `CreditNote#has_errors`, `CreditNote#invoice_addresses`, `Contact#has_validation_errors`, `Payment#has_validation_errors`, `ContactGroup#has_validation_errors`, and `Prepayment#branding_theme_id`.
+
+- **`attribute` accepts several candidate keys**, as `xero: %w[TrackingCategoryOption TrackingOptionName]`. The first one present in the payload wins. It is for a field with no recorded payload to settle which key Xero sends: a wrong single key reads `nil` forever and is indistinguishable from a field the tenant never fills, which is how two regressions shipped. `Contact#tracking_option_name` uses it — Xero's spec calls that field `TrackingCategoryOption`, kiwi called it `TrackingOptionName`, and neither spelling appears in any recording because no tenant to hand has a contact-level tracking default.
+
+- **`rake xero:schema`** compares the resource classes against Xero's published OpenAPI spec, cached for a day. It is the other half of `xero:coverage`: a recording shows what one tenant populated, the spec shows what an endpoint can return at all. Each has caught what the other missed — the spec found the `AccountID` bug that no payload here could, and the recordings hold `User#GlobalUserID`, which the spec omits entirely and whose absence emptied a consumer's memberships table.
+
+  It reports rather than fails, for the same reason `xero:coverage` does, and because the spec is not authoritative on its own: it documents `CreditNote#DueDate`, which Xero sends on none of the 18 recorded credit notes, and omits the four `TrackingOption` booleans that a live capture proved real. Treat a difference as a question; a payload settles it where one exists.
 
 - **`rake xero:coverage`** compares every recorded response against the resource classes that model it, and reports keys Xero sends that nothing reads, attributes nil in every recording, declared types that disagree with what arrived, and classes no recording exercises. Every silent bug this gem has shipped would have appeared in one of those four lists, with the disproving payload already committed. It reports rather than fails: gating it would need an allowlist of legitimately-absent keys, and an allowlist becomes a list nobody reads.
 

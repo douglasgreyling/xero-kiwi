@@ -152,6 +152,26 @@ allowlist of the legitimately-absent keys, and an allowlist becomes a list
 nobody reads — which is the failure this is meant to prevent. Read the
 output instead.
 
+```sh
+bundle exec rake xero:schema
+```
+
+The other half: compares the resource classes against **Xero's published
+OpenAPI spec**, downloaded and cached for a day. A recording shows only what
+one tenant happened to populate; the spec lists what an endpoint can return
+at all.
+
+Run both. Neither is sufficient, and each has caught what the other missed:
+
+| | Found by |
+|---|---|
+| `LineItem` read `AccountId`, Xero sends `AccountID` | **spec** — no recording here carries a line item |
+| `User#global_user_id` | **recordings** — absent from the spec entirely |
+| `CreditNote#due_date` would be a gap | **neither** — the spec documents it, Xero sends it on none |
+
+Treat a difference as a question rather than a defect. A payload settles it
+where one exists.
+
 ### Releasing
 
 **Merge first, then bump.** `rake release` tags whatever is checked out, so a
@@ -2148,6 +2168,7 @@ are always returned on list and single-contact responses:
 | `batch_payments` | `Hash` | Batch payment details (raw). |
 | `discount` | `Float` | Default discount rate. |
 | `balances` | `Hash` | Outstanding and overdue AR/AP balances (raw). |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the contact. |
 | `has_attachments` | `Boolean` | Whether the contact has attachments. |
 
 ## The ContactPerson object
@@ -2283,6 +2304,7 @@ fields Xero returns:
 | `contact_group_id` | `String` | The unique Xero identifier for the group. |
 | `name` | `String` | The display name (e.g. "VIP Customers"). |
 | `status` | `String` | `"ACTIVE"` (only active groups are returned by Xero). |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the group. |
 | `contacts` | `Array<XeroKiwi::Accounting::Contact>` | The contacts in the group (references — each has `reference?` returning `true`). Only present when fetching a single group. See [Contacts](contact.md). |
 
 ## Predicates
@@ -2637,6 +2659,8 @@ fields Xero returns:
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references), as on prepayments and overpayments. See [Payments](payment.md). |
 | `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
+| `has_errors` | `Boolean` | Whether Xero flagged validation errors on the credit note. |
+| `invoice_addresses` | `Array<Hash>` | Invoice addresses (US auto sales tax only). Empty array when absent. |
 | `has_attachments` | `Boolean` | Whether the credit note has attachments. |
 
 ## Nested under an invoice
@@ -2789,6 +2813,8 @@ cover both the list and single-invoice responses:
 | `sent_to_contact` | `Boolean` | Whether the invoice displays as "sent" in Xero. |
 | `expected_payment_date` | `Time` | Expected payment date (ACCREC only). |
 | `planned_payment_date` | `Time` | Planned payment date (ACCPAY only). |
+| `is_discounted` | `Boolean` | Whether any line item carries a discount. |
+| `has_errors` | `Boolean` | Whether Xero flagged validation errors on the invoice. |
 | `has_attachments` | `Boolean` | Whether the invoice has attachments. |
 | `repeating_invoice_id` | `String` | The repeating invoice template ID, if applicable. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
@@ -2910,6 +2936,7 @@ fields Xero returns:
 | `amount` | `BigDecimal` | The payment amount in the invoice's currency. |
 | `bank_amount` | `BigDecimal` | The payment amount in the account's currency. |
 | `reference` | `String` | An optional description for the payment. |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the payment. |
 | `is_reconciled` | `Boolean` | Whether the payment has been reconciled. |
 | `status` | `String` | e.g. `"AUTHORISED"`, `"DELETED"`. |
 | `payment_type` | `String` | e.g. `"ACCRECPAYMENT"`, `"ACCPAYPAYMENT"`. See Xero docs for all types. |
@@ -3153,6 +3180,7 @@ fields Xero returns:
 | `remaining_credit` | `BigDecimal` | The remaining credit balance. |
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
+| `branding_theme_id` | `String` | The branding theme applied, as on credit notes and invoices. |
 | `has_attachments` | `Boolean` | Whether the prepayment has attachments. |
 | `fully_paid_on_date` | `Time` | When the prepayment was fully allocated, parsed as UTC. |
 
@@ -3167,6 +3195,7 @@ documents (prepayments, invoices, etc.):
 | `quantity` | `BigDecimal` | Quantity. |
 | `unit_amount` | `BigDecimal` | Unit amount. |
 | `account_code` | `String` | The account code. |
+| `account_id` | `String` | The account ID. Xero sends this as `AccountID`; kiwi read `AccountId` until 0.10.0 and so returned `nil`. |
 | `tax_type` | `String` | The tax type override. |
 | `tax_amount` | `BigDecimal` | The calculated tax amount. |
 | `line_amount` | `BigDecimal` | The line total. |

@@ -30,6 +30,7 @@ module XeroKiwi
       attribute :remaining_credit,   xero: "RemainingCredit",  type: :decimal
       attribute :allocations,        xero: "Allocations",      type: :collection, of: "Allocation"
       attribute :payments,           xero: "Payments",         type: :collection, of: "Payment", reference: true
+      attribute :branding_theme_id,  xero: "BrandingThemeID",  type: :guid
       attribute :has_attachments,    xero: "HasAttachments",   type: :bool
       attribute :fully_paid_on_date, xero: "FullyPaidOnDate",  type: :date
 

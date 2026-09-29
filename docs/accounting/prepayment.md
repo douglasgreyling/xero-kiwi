@@ -62,6 +62,7 @@ fields Xero returns:
 | `remaining_credit` | `BigDecimal` | The remaining credit balance. |
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
+| `branding_theme_id` | `String` | The branding theme applied, as on credit notes and invoices. |
 | `has_attachments` | `Boolean` | Whether the prepayment has attachments. |
 | `fully_paid_on_date` | `Time` | When the prepayment was fully allocated, parsed as UTC. |
 
@@ -76,6 +77,7 @@ documents (prepayments, invoices, etc.):
 | `quantity` | `BigDecimal` | Quantity. |
 | `unit_amount` | `BigDecimal` | Unit amount. |
 | `account_code` | `String` | The account code. |
+| `account_id` | `String` | The account ID. Xero sends this as `AccountID`; kiwi read `AccountId` until 0.10.0 and so returned `nil`. |
 | `tax_type` | `String` | The tax type override. |
 | `tax_amount` | `BigDecimal` | The calculated tax amount. |
 | `line_amount` | `BigDecimal` | The line total. |

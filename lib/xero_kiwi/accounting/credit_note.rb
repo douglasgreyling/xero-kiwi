@@ -34,6 +34,8 @@ module XeroKiwi
       attribute :allocations,        xero: "Allocations",      type: :collection, of: "Allocation"
       attribute :payments,           xero: "Payments",         type: :collection, of: "Payment", reference: true
       attribute :branding_theme_id,  xero: "BrandingThemeID",  type: :guid
+      attribute :has_errors,         xero: "HasErrors",        type: :bool
+      attribute :invoice_addresses,  xero: "InvoiceAddresses", hydrate: ->(raw) { raw || [] }
       attribute :has_attachments,    xero: "HasAttachments",   type: :bool
 
       def accounts_receivable? = type == "ACCRECCREDIT"

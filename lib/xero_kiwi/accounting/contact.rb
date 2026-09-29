@@ -45,7 +45,7 @@ module XeroKiwi
       attribute :sales_default_line_amount_type,     xero: "SalesDefaultLineAmountType"
       attribute :purchases_default_line_amount_type, xero: "PurchasesDefaultLineAmountType"
       attribute :tracking_category_name,             xero: "TrackingCategoryName"
-      attribute :tracking_option_name,               xero: "TrackingOptionName"
+      attribute :tracking_option_name,               xero: %w[TrackingCategoryOption TrackingOptionName]
       attribute :payment_terms,                      xero: "PaymentTerms",                   hydrate: ->(raw) { PaymentTerms.from_hash(raw) }
       attribute :contact_groups,                     xero: "ContactGroups",                  type: :collection, of: "ContactGroup", reference: true
       attribute :website,                            xero: "Website"
@@ -53,6 +53,7 @@ module XeroKiwi
       attribute :batch_payments,                     xero: "BatchPayments"
       attribute :discount,                           xero: "Discount"
       attribute :balances,                           xero: "Balances"
+      attribute :has_validation_errors,              xero: "HasValidationErrors", type: :bool
       attribute :has_attachments,                    xero: "HasAttachments", type: :bool
 
       def supplier? = is_supplier == true

@@ -67,6 +67,8 @@ cover both the list and single-invoice responses:
 | `sent_to_contact` | `Boolean` | Whether the invoice displays as "sent" in Xero. |
 | `expected_payment_date` | `Time` | Expected payment date (ACCREC only). |
 | `planned_payment_date` | `Time` | Planned payment date (ACCPAY only). |
+| `is_discounted` | `Boolean` | Whether any line item carries a discount. |
+| `has_errors` | `Boolean` | Whether Xero flagged validation errors on the invoice. |
 | `has_attachments` | `Boolean` | Whether the invoice has attachments. |
 | `repeating_invoice_id` | `String` | The repeating invoice template ID, if applicable. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |

@@ -11,6 +11,7 @@ RuboCop::RakeTask.new
 
 require_relative "tasks/llms"
 require_relative "tasks/coverage"
+require_relative "tasks/schema"
 
 namespace :xero do
   desc "Compare every recorded Xero response against the resources that model it"
@@ -55,6 +56,36 @@ namespace :xero do
     puts "-" * 70
     puts "  Nothing here is verified against a real payload."
     Coverage.unexercised(report).sort_by(&:name).each { |klass| puts "    #{Coverage.short(klass)}" }
+    puts
+  end
+
+  desc "Compare the resource classes against Xero's published OpenAPI spec"
+  task :schema do
+    $LOAD_PATH.unshift File.expand_path("lib", __dir__)
+    require "xero_kiwi"
+
+    puts "Fields Xero documents that we do not read"
+    puts "-" * 70
+    Schema.unmodelled.each do |klass, keys|
+      puts "\n  #{Coverage.short(klass)}"
+      keys.each { |key| puts "    #{key}" }
+    end
+
+    puts "\n\nKeys we read that Xero does not document"
+    puts "-" * 70
+    puts "  Either the spec omits the field or we invented the key. Only a"
+    puts "  payload can say which — check `rake xero:coverage` for one."
+    Schema.undocumented.each do |klass, keys|
+      puts "\n  #{Coverage.short(klass)}"
+      keys.each { |key| puts "    #{key}" }
+    end
+
+    unmatched = Schema.unmatched
+    unless unmatched.empty?
+      puts "\n\nClasses with no matching schema in the spec"
+      puts "-" * 70
+      unmatched.each { |klass| puts "    #{Coverage.short(klass)}" }
+    end
     puts
   end
 end

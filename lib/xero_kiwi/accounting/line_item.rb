@@ -15,7 +15,7 @@ module XeroKiwi
       attribute :unit_amount,     xero: "UnitAmount",     type: :decimal
       attribute :item_code,       xero: "ItemCode"
       attribute :account_code,    xero: "AccountCode"
-      attribute :account_id,      xero: "AccountId", type: :guid
+      attribute :account_id,      xero: "AccountID", type: :guid
       attribute :tax_type,        xero: "TaxType"
       attribute :tax_amount,      xero: "TaxAmount",      type: :decimal
       attribute :line_amount,     xero: "LineAmount",     type: :decimal

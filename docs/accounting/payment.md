@@ -48,6 +48,7 @@ fields Xero returns:
 | `amount` | `BigDecimal` | The payment amount in the invoice's currency. |
 | `bank_amount` | `BigDecimal` | The payment amount in the account's currency. |
 | `reference` | `String` | An optional description for the payment. |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the payment. |
 | `is_reconciled` | `Boolean` | Whether the payment has been reconciled. |
 | `status` | `String` | e.g. `"AUTHORISED"`, `"DELETED"`. |
 | `payment_type` | `String` | e.g. `"ACCRECPAYMENT"`, `"ACCPAYPAYMENT"`. See Xero docs for all types. |

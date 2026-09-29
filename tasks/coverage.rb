@@ -95,14 +95,14 @@ module Coverage
     record_unmodelled(klass, item, report)
 
     klass.attributes.each do |name, spec|
-      raw = item[spec[:xero]]
+      raw = klass.raw_value(item, spec)
       record_attribute(klass, name, spec, raw, report)
       descend(spec, raw, report)
     end
   end
 
   def record_unmodelled(klass, item, report)
-    modelled = klass.attributes.values.map { |spec| spec[:xero] }
+    modelled = klass.attributes.values.flat_map { |spec| klass.xero_keys(spec) }
 
     (item.keys - modelled).each do |key|
       report[:unmodelled][klass][key][blank?(item[key]) ? :blank : :populated] += 1

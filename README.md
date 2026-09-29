@@ -139,6 +139,26 @@ allowlist of the legitimately-absent keys, and an allowlist becomes a list
 nobody reads — which is the failure this is meant to prevent. Read the
 output instead.
 
+```sh
+bundle exec rake xero:schema
+```
+
+The other half: compares the resource classes against **Xero's published
+OpenAPI spec**, downloaded and cached for a day. A recording shows only what
+one tenant happened to populate; the spec lists what an endpoint can return
+at all.
+
+Run both. Neither is sufficient, and each has caught what the other missed:
+
+| | Found by |
+|---|---|
+| `LineItem` read `AccountId`, Xero sends `AccountID` | **spec** — no recording here carries a line item |
+| `User#global_user_id` | **recordings** — absent from the spec entirely |
+| `CreditNote#due_date` would be a gap | **neither** — the spec documents it, Xero sends it on none |
+
+Treat a difference as a question rather than a defect. A payload settles it
+where one exists.
+
 ### Releasing
 
 **Merge first, then bump.** `rake release` tags whatever is checked out, so a

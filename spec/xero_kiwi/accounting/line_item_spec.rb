@@ -9,7 +9,7 @@ RSpec.describe XeroKiwi::Accounting::LineItem do
       "UnitAmount"     => 1800.00,
       "ItemCode"       => "12",
       "AccountCode"    => "200",
-      "AccountId"      => "4f2a3169-8454-4012-a642-05a88ef32982",
+      "AccountID"      => "4f2a3169-8454-4012-a642-05a88ef32982",
       "TaxType"        => "OUTPUT",
       "TaxAmount"      => 225.00,
       "LineAmount"     => 1800.00,

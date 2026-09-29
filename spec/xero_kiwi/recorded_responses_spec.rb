@@ -152,6 +152,32 @@ RSpec.describe "recorded Xero responses" do # rubocop:disable RSpec/DescribeClas
     end
   end
 
+  # Each of these is sent on every record in its recording and was reachable
+  # only through `raw`. They came out of a comparison against Xero's
+  # published OpenAPI spec, which lists all of them — the recordings alone
+  # only showed an unread key, not whether Xero meant to send it.
+  describe "fields the spec documents and the recordings confirm" do
+    it "reads Invoice#is_discounted", vcr: { cassette_name: "invoices/list", record: :none } do
+      expect(client.invoices(tenant_id).map(&:is_discounted)).to all(be(false).or(be(true)))
+    end
+
+    it "reads CreditNote#has_errors", vcr: { cassette_name: "credit_notes/list", record: :none } do
+      expect(client.credit_notes(tenant_id).map(&:has_errors)).to all(be(false).or(be(true)))
+    end
+
+    it "reads Contact#has_validation_errors", vcr: { cassette_name: "contacts/list", record: :none } do
+      expect(client.contacts(tenant_id).map(&:has_validation_errors)).to all(be(false).or(be(true)))
+    end
+
+    it "reads Payment#has_validation_errors", vcr: { cassette_name: "payments/list", record: :none } do
+      expect(client.payments(tenant_id).map(&:has_validation_errors)).to all(be(false).or(be(true)))
+    end
+
+    it "gives CreditNote#invoice_addresses an array rather than nil", vcr: { cassette_name: "credit_notes/list", record: :none } do
+      expect(client.credit_notes(tenant_id).map(&:invoice_addresses)).to all(be_an(Array))
+    end
+  end
+
   describe "organisation", vcr: { cassette_name: "organisation/get", record: :none } do
     it "names the kind of tax number it holds" do
       expect(client.organisation(tenant_id).tax_number_name).to eq("VAT Number")

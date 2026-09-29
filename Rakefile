@@ -10,6 +10,54 @@ require "rubocop/rake_task"
 RuboCop::RakeTask.new
 
 require_relative "tasks/llms"
+require_relative "tasks/coverage"
+
+namespace :xero do
+  desc "Compare every recorded Xero response against the resources that model it"
+  task :coverage do
+    $LOAD_PATH.unshift File.expand_path("lib", __dir__)
+    require "xero_kiwi"
+
+    report = Coverage.survey
+
+    puts "Keys Xero sends that nothing models"
+    puts "-" * 70
+    Coverage.unmodelled(report).sort_by { |klass, _| klass.name }.each do |klass, rows|
+      puts "\n  #{Coverage.short(klass)} (#{report[:seen][klass]} recorded)"
+      rows.each do |key, populated, total|
+        state = populated.positive? ? "populated #{populated}/#{total}" : "always empty"
+        puts format("    %-30<key>s %<state>s", key: key, state: state)
+      end
+    end
+
+    puts "\n\nAttributes nil in every recording"
+    puts "-" * 70
+    puts "  A wrong `xero:` key is indistinguishable from a field this tenant never fills."
+    Coverage.unpopulated(report).sort_by { |klass, _| klass.name }.each do |klass, names|
+      puts "\n  #{Coverage.short(klass)} (#{report[:seen][klass]} recorded)"
+      names.each do |name|
+        puts format("    %-30<name>s -> %<key>s", name: name, key: klass.attributes[name][:xero].inspect)
+      end
+    end
+
+    puts "\n\nDeclared type against what Xero sends"
+    puts "-" * 70
+    Coverage.mistyped(report).sort_by { |klass, _| klass.name }.each do |klass, rows|
+      puts "\n  #{Coverage.short(klass)}"
+      rows.each do |name, type, counts|
+        actual = counts.map { |cls, n| "#{cls} x#{n}" }.join(", ")
+        puts format("    %-26<name>s declared %-9<type>s got %<actual>s",
+                    name: name, type: type.inspect, actual: actual)
+      end
+    end
+
+    puts "\n\nClasses no recording exercises"
+    puts "-" * 70
+    puts "  Nothing here is verified against a real payload."
+    Coverage.unexercised(report).sort_by(&:name).each { |klass| puts "    #{Coverage.short(klass)}" }
+    puts
+  end
+end
 
 namespace :llms do
   desc "Regenerate llms.txt and llms-full.txt from README and docs/"

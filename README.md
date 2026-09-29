@@ -117,6 +117,28 @@ default `redis://127.0.0.1:6379/15`.
 docker compose down          # when you're done
 ```
 
+### Checking a resource against real payloads
+
+```sh
+bundle exec rake xero:coverage
+```
+
+Compares every recorded response in `spec/fixtures/vcr_cassettes` against
+the resource classes that model it, and reports four things: keys Xero sends
+that nothing reads, attributes that were nil in every recording, declared
+types that disagree with what arrived, and classes no recording exercises at
+all.
+
+**Run it whenever you add or change a resource.** Every silent bug this gem
+has shipped would have appeared in one of those four lists, and in each case
+the disproving payload was already committed — the recordings were never the
+gap, reading them was.
+
+It reports rather than fails, and deliberately. Gating it would need an
+allowlist of the legitimately-absent keys, and an allowlist becomes a list
+nobody reads — which is the failure this is meant to prevent. Read the
+output instead.
+
 ### Releasing
 
 **Merge first, then bump.** `rake release` tags whatever is checked out, so a

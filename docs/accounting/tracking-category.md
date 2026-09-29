@@ -84,8 +84,19 @@ single `TrackingCategory`, or `nil` if the response is empty.
 | `tracking_option_id` | `String` | The unique Xero identifier for the option. |
 | `name` | `String` | The option's display name (e.g. "Eastside"). |
 | `status` | `String` | `"ACTIVE"` or `"DELETED"`. |
+| `is_active` | `Boolean` | Xero's boolean equivalent of `status`. |
+| `is_archived` | `Boolean` | Whether the option has been archived. |
+| `is_deleted` | `Boolean` | Whether the option has been deleted. |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the option. |
 
 `#active?` is a shorthand for `status == "ACTIVE"`.
+
+Xero sends both `Status` and those booleans, and they overlap. On an active
+option they agree — whether they diverge on an archived or deleted one is
+unconfirmed, which is why `#active?` reads `status` and the booleans are left
+for you to interpret. If you need to distinguish archived from deleted,
+`is_archived` and `is_deleted` are the ones to read; `status` collapses both
+into `"DELETED"`.
 
 ## The Tracking object
 

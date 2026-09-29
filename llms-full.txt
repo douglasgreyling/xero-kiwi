@@ -2847,7 +2847,6 @@ cover both the list and single-invoice responses:
 | `amount_credited` | `BigDecimal` | Sum of credit notes, overpayments, and prepayments applied. |
 | `cis_deduction` | `BigDecimal` | CIS deduction (UK Construction Industry Scheme only). |
 | `fully_paid_on_date` | `Time` | When the invoice was fully paid, parsed as UTC. |
-| `sales_tax_calculation_type_code` | `String` | US auto sales tax calculation type. |
 | `invoice_addresses` | `Array<Hash>` | Invoice addresses (US auto sales tax only). |
 
 ## Predicates

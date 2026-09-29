@@ -46,7 +46,6 @@ module XeroKiwi
       attribute :amount_credited,                 xero: "AmountCredited",             type: :decimal
       attribute :cis_deduction,                   xero: "CISDeduction",               type: :decimal
       attribute :fully_paid_on_date,              xero: "FullyPaidOnDate",            type: :date
-      attribute :sales_tax_calculation_type_code, xero: "SalesTaxCalculationTypeCode"
       attribute :invoice_addresses,               xero: "InvoiceAddresses", hydrate: ->(raw) { raw || [] }
 
       def accounts_receivable? = type == "ACCREC"

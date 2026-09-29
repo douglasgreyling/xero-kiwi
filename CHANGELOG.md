@@ -20,6 +20,12 @@
 
 - **`""` now reads as `nil` on `:decimal` attributes too.** 0.8.0 normalised empty strings on `:string`, `:enum` and `:guid` and explicitly left `:decimal` alone as wanting its own decision. This is that decision. The alternative was `BigDecimal("")` raising, or a silent zero — the same shape as both allocation regressions.
 
+- **Removed `Invoice#sales_tax_calculation_type_code`.** It read the payload key `"SalesTaxCalculationTypeCode"`, which appears in none of this gem's recorded responses, nowhere in Xero's 911K OpenAPI spec, and in none of a consumer's 368 recorded interactions across both the XML and JSON eras. Xero has no invoice-level sales-tax-calculation field under any name; its US sales tax fields are on the line item. The reader has returned `nil` since the first commit.
+
+  Removing it cannot break working code, because there has never been a value to depend on. It is listed as Breaking because the method disappears: a caller reading it goes from a silent `nil` to a `NoMethodError`, which is the same trade the empty-string change made in 0.8.0. If Xero ever does send the key, `retain_raw: true` exposes it through `invoice.raw`.
+
+  Recording why it went, so nobody re-adds it from the same plausible-sounding guess: it was never verified against a payload or a schema, and it was documented as "US auto sales tax calculation type", which made a permanent `nil` read as an answer about the organisation rather than a gap in the gem.
+
 ### Fixed
 
 - **`invoice.credit_notes`, `invoice.prepayments` and `invoice.overpayments` returned objects with the applied amount missing.** Xero nests **allocation stubs** under an invoice, not whole documents: a stub carries `AppliedAmount`, the amount applied to *that* invoice. Nothing modelled that key, so the nearest-looking reader was `total` — the document's own total, and a different number on **19 of the 24 stubs** in the recorded response. On one, `total` was `10983.65` where `applied_amount` was `857.35`.

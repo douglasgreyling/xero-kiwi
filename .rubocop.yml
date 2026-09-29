@@ -147,6 +147,7 @@ Metrics/ClassLength:
 Metrics/ModuleLength:
   Exclude:
     - 'tasks/llms.rb'
+    - 'tasks/coverage.rb'
 
 Metrics/MethodLength:
   Max: 15

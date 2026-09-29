@@ -87,6 +87,7 @@ are always returned on list and single-contact responses:
 | `batch_payments` | `Hash` | Batch payment details (raw). |
 | `discount` | `Float` | Default discount rate. |
 | `balances` | `Hash` | Outstanding and overdue AR/AP balances (raw). |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the contact. |
 | `has_attachments` | `Boolean` | Whether the contact has attachments. |
 
 ## The ContactPerson object

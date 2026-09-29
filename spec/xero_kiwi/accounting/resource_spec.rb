@@ -27,6 +27,42 @@ RSpec.describe XeroKiwi::Accounting::Resource do
     end
   end
 
+  # For a field with no recorded payload to settle which key Xero sends.
+  # A wrong single key reads nil forever and is indistinguishable from a
+  # field the tenant never fills, which is how two regressions shipped.
+  describe ".attribute with several candidate keys" do
+    subject(:klass) do
+      Class.new do
+        include XeroKiwi::Accounting::Resource
+
+        identity :account_id
+        attribute :account_id, xero: %w[AccountID AccountId], type: :guid
+      end
+    end
+
+    it "reads the preferred key" do
+      expect(klass.new("AccountID" => "abc").account_id).to eq("abc")
+    end
+
+    it "falls back to the alternative" do
+      expect(klass.new("AccountId" => "def").account_id).to eq("def")
+    end
+
+    it "prefers the first when both arrive" do
+      expect(klass.new("AccountId" => "def", "AccountID" => "abc").account_id).to eq("abc")
+    end
+
+    it "is nil when neither does" do
+      expect(klass.new("Unrelated" => "x").account_id).to be_nil
+    end
+
+    # `where` clauses compile a single path, so the query schema has to pick
+    # one rather than hand the compiler an Array.
+    it "queries on the preferred key alone" do
+      expect(klass.query_fields[:account_id][:path]).to eq("AccountID")
+    end
+  end
+
   describe ".attribute" do
     it "defines a reader for each declared attribute" do
       instance = resource_klass.new({ "WidgetID" => "abc" })

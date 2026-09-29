@@ -38,6 +38,11 @@ module XeroKiwi
           @payload_key = key
         end
 
+        # `xero:` takes an Array when the key Xero sends is genuinely in
+        # doubt — the first one present in the payload wins. Reach for it
+        # only when there is no recorded payload to settle the question and
+        # the sources disagree; a wrong single key reads nil forever and
+        # looks exactly like a field the tenant never fills.
         def attribute(name, xero:, type: :string, of: nil, reference: false, hydrate: nil, query: false)
           attributes[name] = {
             xero:      xero,
@@ -53,6 +58,17 @@ module XeroKiwi
 
         def attributes
           @_attributes ||= {}
+        end
+
+        # Every key this attribute will answer to, in precedence order.
+        def xero_keys(spec)
+          Array(spec[:xero])
+        end
+
+        # The first candidate key actually present in the payload.
+        def raw_value(attrs, spec)
+          key = xero_keys(spec).find { |candidate| attrs.key?(candidate) }
+          key && attrs[key]
         end
 
         def identity(*attrs)
@@ -90,10 +106,12 @@ module XeroKiwi
         def build_query_field(spec)
           klass = spec[:of].is_a?(Class) ? spec[:of] : (spec[:of] && Hydrator.resolve_class(spec[:of]))
 
+          path = xero_keys(spec).first
+
           if spec[:type] == :object && klass.respond_to?(:query_fields)
-            { path: spec[:xero], type: :nested, fields: klass.query_fields }
+            { path: path, type: :nested, fields: klass.query_fields }
           else
-            { path: spec[:xero], type: spec[:type] }
+            { path: path, type: spec[:type] }
           end
         end
 
@@ -130,7 +148,7 @@ module XeroKiwi
         @raw          = opts[:retain_raw] ? attrs.freeze : nil
 
         self.class.attributes.each do |name, spec|
-          value = Hydrator.call(attrs[spec[:xero]], spec)
+          value = Hydrator.call(self.class.raw_value(attrs, spec), spec)
           instance_variable_set("@#{name}", value)
         end
       end
@@ -212,6 +230,8 @@ module XeroKiwi
           "[#{value.size} items]"
         when :object
           value.nil? ? "nil" : format_nested_object(value)
+        when :decimal
+          value.nil? ? "nil" : value.to_s("F")
         else
           value.inspect
         end

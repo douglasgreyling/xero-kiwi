@@ -17,6 +17,7 @@ module XeroKiwi
       attribute :amount,           xero: "Amount",          type: :decimal
       attribute :bank_amount,      xero: "BankAmount",      type: :decimal
       attribute :reference,        xero: "Reference",       query: true
+      attribute :has_validation_errors, xero: "HasValidationErrors", type: :bool
       attribute :is_reconciled,    xero: "IsReconciled",    type: :bool
       attribute :status,           xero: "Status",          type: :enum, query: true
       attribute :payment_type,     xero: "PaymentType",     type: :enum, query: true

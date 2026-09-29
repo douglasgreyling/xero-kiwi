@@ -191,6 +191,87 @@ RSpec.describe XeroKiwi::OAuth do
     end
   end
 
+  describe "#client_credentials_token" do
+    let(:token_endpoint) { "https://identity.xero.com/connect/token" }
+    let(:expected_basic) { "Basic #{Base64.strict_encode64("#{client_id}:#{client_secret}")}" }
+
+    def stub_grant(body:, status: 200)
+      stub_request(:post, token_endpoint).to_return(status: status, body: JSON.dump(body), headers: json_headers)
+    end
+
+    it "POSTs the client_credentials grant with HTTP Basic auth and the scope" do
+      stub = stub_request(:post, token_endpoint)
+             .with(
+               headers: { "Authorization" => expected_basic,
+                          "Content-Type"  => "application/x-www-form-urlencoded" },
+               body:    { grant_type: "client_credentials", scope: "app.connections" }
+             )
+             .to_return(status: 200, body: JSON.dump("access_token" => "at", "expires_in" => 1800), headers: json_headers)
+
+      oauth.client_credentials_token(scopes: "app.connections")
+
+      expect(stub).to have_been_requested
+    end
+
+    it "joins several scopes the way the authorise URL does" do
+      stub = stub_request(:post, token_endpoint)
+             .with(body: { grant_type: "client_credentials", scope: "app.connections accounting.settings" })
+             .to_return(status: 200, body: JSON.dump("access_token" => "at"), headers: json_headers)
+
+      oauth.client_credentials_token(scopes: %w[app.connections accounting.settings])
+
+      expect(stub).to have_been_requested
+    end
+
+    # Xero assigns the app's own scopes when none is given, and an empty
+    # scope= is not the same request as no scope at all.
+    it "omits the scope entirely rather than sending it empty" do
+      stub = stub_request(:post, token_endpoint)
+             .with(body: { grant_type: "client_credentials" })
+             .to_return(status: 200, body: JSON.dump("access_token" => "at"), headers: json_headers)
+
+      oauth.client_credentials_token
+
+      expect(stub).to have_been_requested
+    end
+
+    it "returns a Token carrying the access token and its expiry" do
+      stub_grant(body: { "access_token" => "at_123", "expires_in" => 1800, "token_type" => "Bearer" })
+
+      token = oauth.client_credentials_token(scopes: "app.connections")
+
+      expect(token).to have_attributes(access_token: "at_123", token_type: "Bearer")
+      expect(token.expires_at).to be_within(5).of(Time.now + 1800)
+    end
+
+    # Xero issues no refresh token for this grant. A Client holding one must
+    # therefore raise on expiry rather than trying to renew it, and
+    # Client#can_refresh? keys off exactly this.
+    it "returns a token that reports itself as unrefreshable" do
+      stub_grant(body: { "access_token" => "at_123", "expires_in" => 1800 })
+
+      token = oauth.client_credentials_token(scopes: "app.connections")
+
+      expect(token).to have_attributes(refresh_token: nil, refreshable?: false)
+    end
+
+    it "raises ClientCredentialsError when the credentials or scope are refused" do
+      stub_grant(status: 401, body: { "error" => "invalid_client" })
+
+      expect { oauth.client_credentials_token(scopes: "app.connections") }
+        .to raise_error(XeroKiwi::OAuth::ClientCredentialsError)
+    end
+
+    # It subclasses AuthenticationError, so a caller rescuing the general
+    # case keeps working.
+    it "raises something an AuthenticationError rescue still catches" do
+      stub_grant(status: 400, body: { "error" => "unauthorized_client" })
+
+      expect { oauth.client_credentials_token(scopes: "nope") }
+        .to raise_error(XeroKiwi::AuthenticationError)
+    end
+  end
+
   describe "#revoke_token" do
     let(:revoke_endpoint) { "https://identity.xero.com/connect/revocation" }
 

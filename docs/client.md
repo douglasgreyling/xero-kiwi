@@ -215,6 +215,58 @@ This is the third axis on which the two representations differ, after
 nesting and key names. Treat "it's the same field, so it's the same value"
 as the assumption to check rather than the one to rely on.
 
+**Money is a `BigDecimal`, not a String and not a Float.** An XML client
+hands you `"19812.97"`; Xero's JSON sends the number `19812.97`, which Ruby
+parses as a Float. Kiwi converts every money field to `BigDecimal` on the
+way in, because Floats cannot represent most decimal fractions and so
+arithmetic between two of them drifts:
+
+```ruby
+17228.67 + 2584.3            # => 19812.969999999998   ← Float
+invoice.sub_total + invoice.total_tax == invoice.total # => true
+```
+
+That identity failed on 3 of the 55 invoices in this gem's recorded
+response as Floats, and on none of them as BigDecimals. Each individual
+value was correct in both — it is only arithmetic between fields that goes
+wrong, which is what makes it quiet.
+
+For migration this mostly helps. Comparison is not a concern —
+`BigDecimal("19812.97")` equals the Float `19812.97`, equals
+`BigDecimal("19812.97")`, and `BigDecimal("100")` equals `100` — and a
+`decimal`/`numeric` column takes it unchanged. Two things do change:
+
+- **`to_s` gives `"0.1981297e5"`**, not `"19812.97"`. Use `to_s("F")` for a
+  plain decimal string.
+- **`to_json` gives the string `"0.1981297e5"`**, where a Float gave the
+  number `19812.97`. Writing a **typed** money attribute into a `jsonb`
+  column or an API response changes the stored shape — from a JSON number
+  to a JSON string in scientific notation. Call `to_s("F")` or `to_f` on
+  the way in, depending on which you want.
+
+  **`raw` is not affected.** It holds Xero's parsed payload untouched, so a
+  money value in there is still a Float and still serialises as a JSON
+  number. A consumer whose `jsonb` columns are fed from `raw` sees no
+  change at all — that separation is the whole point of `raw`.
+
+`is_a?(Float)` is also now false, though `is_a?(Numeric)` still holds.
+
+**Check for `.to_f` on money you persist.** Converting back to Float
+immediately undoes this change, and does so silently: a `decimal(19,4)`
+column holds more precision than a Float can carry, so the round trip loses
+digits rather than raising.
+
+```ruby
+BigDecimal("1234567890123.4567").round(4)             # => 1234567890123.4567
+BigDecimal("1234567890123.4567").to_f.to_d.round(4)   # => 1234567890123.456
+BigDecimal("999999999999999.9999").to_f.to_d.round(4) # => 1000000000000000.0
+```
+
+Out of reach for currencies like GBP or ZAR at ordinary invoice sizes, not
+for IDR or VND. A `.to_f` left over from an XML-era client — where the value
+arrived as a String and had to be converted — is the likely place to find
+one.
+
 One piece of luck worth knowing about: the two piles tend to fail
 differently. A `dig` that misses returns nil and writes a blank record
 quietly. Code that assumed a Hash, such as `Array#to_h` on what is now a
@@ -226,7 +278,7 @@ review time for the silent ones.
 
 | Method | Returns | Purpose |
 |--------|---------|---------|
-| `client.connections` | `Array<XeroKiwi::Connection>` | Fetch the tenants this token is authorised against. See [Connections](connections.md). |
+| `client.connections(tenant_id: nil)` | `Array<XeroKiwi::Connection>` | Fetch the tenants this token is authorised against. `tenant_id:` is required on a client-credentials token and unused on a user token. See [Connections](connections.md). |
 | `client.contacts(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Contact>` | Fetch the contacts for a tenant. See [Contacts](accounting/contact.md). |
 | `client.contact(tenant_id_or_connection, contact_id)` | `XeroKiwi::Accounting::Contact` | Fetch a single contact by ID. See [Contacts](accounting/contact.md). |
 | `client.contact_groups(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::ContactGroup>` | Fetch the contact groups for a tenant. See [Contact Groups](accounting/contact-group.md). |

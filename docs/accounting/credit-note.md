@@ -50,21 +50,47 @@ fields Xero returns:
 | `status` | `String` | e.g. `"DRAFT"`, `"SUBMITTED"`, `"AUTHORISED"`, `"PAID"`, `"VOIDED"`. |
 | `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
 | `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items. See [Prepayments — LineItem](prepayment.md#the-lineitem-object). |
-| `sub_total` | `Numeric` | The subtotal excluding taxes. |
-| `total_tax` | `Numeric` | The total tax amount. |
-| `total` | `Numeric` | The total (subtotal + total tax). |
-| `cis_deduction` | `Numeric` | CIS deduction (UK Construction Industry Scheme only). |
+| `sub_total` | `BigDecimal` | The subtotal excluding taxes. |
+| `total_tax` | `BigDecimal` | The total tax amount. |
+| `total` | `BigDecimal` | The total (subtotal + total tax). |
+| `applied_amount` | `BigDecimal` | Only set when this credit note is nested under an invoice, where it is the amount applied to *that* invoice — not the credit note total. `nil` on a credit note fetched in its own right. See [Nested under an invoice](#nested-under-an-invoice). |
+| `cis_deduction` | `BigDecimal` | CIS deduction (UK Construction Industry Scheme only). |
 | `updated_date_utc` | `Time` | When the credit note was last modified, parsed as UTC. |
 | `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
-| `currency_rate` | `Numeric` | The currency rate (1.0 for base currency). |
+| `currency_rate` | `BigDecimal` | The currency rate (1.0 for base currency). |
 | `fully_paid_on_date` | `Time` | When the credit note was fully allocated, parsed as UTC. |
 | `reference` | `String` | Additional reference number (ACCRECCREDIT only). |
 | `sent_to_contact` | `Boolean` | Whether the credit note has been sent to the contact. |
-| `remaining_credit` | `Numeric` | The remaining credit balance. |
+| `remaining_credit` | `BigDecimal` | The remaining credit balance. |
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references), as on prepayments and overpayments. See [Payments](payment.md). |
 | `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
+| `has_errors` | `Boolean` | Whether Xero flagged validation errors on the credit note. |
+| `invoice_addresses` | `Array<Hash>` | Invoice addresses (US auto sales tax only). Empty array when absent. |
 | `has_attachments` | `Boolean` | Whether the credit note has attachments. |
+
+## Nested under an invoice
+
+`invoice.credit_notes` does not return whole credit notes. Xero nests an
+**allocation stub** there — a partial credit note describing how much of it
+was applied to *that* invoice:
+
+```ruby
+invoice = client.invoices(tenant_id).first
+stub    = invoice.credit_notes.find { |s| s.applied_amount != s.total }
+
+stub.applied_amount  # => BigDecimal("857.35")    applied to this invoice
+stub.total           # => BigDecimal("10983.65")  the credit note's own total
+stub.credit_note_id  # => "4bbdbaaf-…"            fetch it in full with this
+```
+
+`applied_amount` and `total` answer different questions, and they differ on
+8 of the 11 stubs in this gem's recorded response. Reaching for `total`
+to ask "how much was applied to this invoice" overstates it.
+
+A stub carries only `credit_note_id`, `applied_amount`, `total` and `date`.
+Everything else is `nil` or empty, including `line_items` — fetch the
+credit note by its ID when you need the rest of it.
 
 ## Predicates
 

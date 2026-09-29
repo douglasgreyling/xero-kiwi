@@ -44,6 +44,7 @@ Xero returns:
 | `registration_number` | `String` | The company registration number. |
 | `employer_identification_number` | `String` | The EIN (US organisations). |
 | `tax_number` | `String` | The tax/VAT number. |
+| `tax_number_name` | `String` | What the organisation's locale calls that number, e.g. `"VAT Number"`. |
 | `financial_year_end_day` | `Integer` | Day of month the financial year ends (1–31). |
 | `financial_year_end_month` | `Integer` | Month the financial year ends (1–12). |
 | `sales_tax_basis` | `String` | e.g. `"Payments"`, `"CASH"`, `"ACCRUALS"`. |

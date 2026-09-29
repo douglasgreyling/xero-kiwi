@@ -21,6 +21,7 @@ module XeroKiwi
       attribute :sub_total,         xero: "SubTotal",        type: :decimal
       attribute :total_tax,         xero: "TotalTax",        type: :decimal
       attribute :total,             xero: "Total",           type: :decimal
+      attribute :applied_amount,    xero: "AppliedAmount",   type: :decimal
       attribute :updated_date_utc,  xero: "UpdatedDateUTC",  type: :date, query: true
       attribute :currency_code,     xero: "CurrencyCode"
       attribute :currency_rate,     xero: "CurrencyRate",    type: :decimal

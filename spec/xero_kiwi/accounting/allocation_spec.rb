@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 RSpec.describe XeroKiwi::Accounting::Allocation do
-  # Shaped after a real allocation embedded in a CreditNote response.
-  # Responses carry "AppliedAmount"; "Amount" belongs to the allocation
-  # *request* body, which this reader-only gem never sends. The previous
-  # version of this spec used a fabricated "Amount" payload and so agreed
-  # with the bug instead of catching it.
+  # Deliberately keyed "AppliedAmount", which is what Xero's XML sends. JSON
+  # sends "Amount", and the reader resolves either — see the class. The JSON
+  # side is asserted against a real recording in recorded_responses_spec.rb
+  # rather than here, since a fabricated payload can only confirm whatever
+  # shape it was written in.
   let(:full_attrs) do
     {
       "AllocationID"  => "b12335f4-a1e5-4431-aeb4-488e5547558e",
-      "AppliedAmount" => "553.15",
+      "AppliedAmount" => 553.15,
       "Date"          => "/Date(1401062400000+0000)/",
       "Invoice"       => { "InvoiceID"     => "87cfa39f-136c-4df9-a70d-bb80d8ddb975",
                            "InvoiceNumber" => "INV-0040" },
@@ -23,7 +23,7 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
     it "maps all scalar attributes" do
       expect(allocation).to have_attributes(
         allocation_id:  "b12335f4-a1e5-4431-aeb4-488e5547558e",
-        applied_amount: "553.15",
+        applied_amount: BigDecimal("553.15"),
         is_deleted:     false
       )
     end
@@ -52,7 +52,7 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
   # and both readers resolve.
   describe "the allocated value" do
     let(:json_shaped) { { "AllocationID" => "abc", "Amount" => 521.23 } }
-    let(:xml_shaped)  { { "AllocationID" => "abc", "AppliedAmount" => "553.15" } }
+    let(:xml_shaped)  { { "AllocationID" => "abc", "AppliedAmount" => 553.15 } }
 
     it "reads Xero's JSON key", :aggregate_failures do
       allocation = described_class.new(json_shaped)
@@ -64,8 +64,8 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
     it "reads Xero's XML key", :aggregate_failures do
       allocation = described_class.new(xml_shaped)
 
-      expect(allocation.applied_amount).to eq("553.15")
-      expect(allocation.amount).to eq("553.15")
+      expect(allocation.applied_amount).to eq(BigDecimal("553.15"))
+      expect(allocation.amount).to eq(BigDecimal("553.15"))
     end
 
     it "is nil only when neither key is present", :aggregate_failures do
@@ -90,7 +90,7 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
       hash = described_class.new(full_attrs).to_h
 
       expect(hash[:allocation_id]).to eq("b12335f4-a1e5-4431-aeb4-488e5547558e")
-      expect(hash[:applied_amount]).to eq("553.15")
+      expect(hash[:applied_amount]).to eq(BigDecimal("553.15"))
       expect(hash.keys).to match_array(described_class.attributes.keys)
     end
 
@@ -98,14 +98,14 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
     # projection reports the value twice. `raw` is where you look to see
     # which key Xero actually sent.
     it "reports the allocated value under both keys" do
-      expect(described_class.new(full_attrs).to_h).to include(amount: "553.15", applied_amount: "553.15")
+      expect(described_class.new(full_attrs).to_h).to include(amount: BigDecimal("553.15"), applied_amount: BigDecimal("553.15"))
     end
   end
 
   describe "equality" do
     it "considers two allocations equal when they share the same allocation_id", :aggregate_failures do
-      a = described_class.new({ "AllocationID" => "abc", "AppliedAmount" => "100" })
-      b = described_class.new({ "AllocationID" => "abc", "AppliedAmount" => "200" })
+      a = described_class.new({ "AllocationID" => "abc", "AppliedAmount" => 100 })
+      b = described_class.new({ "AllocationID" => "abc", "AppliedAmount" => 200 })
 
       expect(a).to eq(b)
       expect(a).to eql(b)

@@ -16,7 +16,73 @@ RSpec.describe XeroKiwi::Client do
   let(:json_headers)         { { "Content-Type" => "application/json" } }
   let(:connections_endpoint) { "https://api.xero.com/connections" }
 
+  # Connection management is the one thing an app does without a user, using
+  # a client-credentials token. That token carries no refresh token, so the
+  # auto-refresh paths must stay out of the way rather than attempt a
+  # renewal that cannot succeed.
+  describe "with a client-credentials token" do
+    let(:app_client) do
+      described_class.new(access_token: "app_token", client_id: "id", client_secret: "secret")
+    end
+
+    it "sends it as a bearer token like any other" do
+      stub = stub_request(:get, connections_endpoint)
+             .with(headers: { "Authorization" => "Bearer app_token" })
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections(tenant_id: "22222222-2222-2222-2222-000000000001")
+
+      expect(stub).to have_been_requested
+    end
+
+    # A user token identifies a user, so Xero can answer "which tenants can
+    # you see" unaided. An app token identifies nobody, and Xero answers
+    # 400 "Xero-User-Id and/or Xero-Tenant-Id header must be supplied."
+    # Measured against live Xero by a consumer: same token, same request,
+    # one header apart.
+    it "sends the tenant header when one is given" do
+      stub = stub_request(:get, connections_endpoint)
+             .with(headers: { "Xero-Tenant-Id" => "22222222-2222-2222-2222-000000000001" })
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections(tenant_id: "22222222-2222-2222-2222-000000000001")
+
+      expect(stub).to have_been_requested
+    end
+
+    it "takes a Connection as readily as a tenant-id string" do
+      connection = XeroKiwi::Connection.new("tenantId" => "22222222-2222-2222-2222-000000000001")
+      stub       = stub_request(:get, connections_endpoint)
+                   .with(headers: { "Xero-Tenant-Id" => "22222222-2222-2222-2222-000000000001" })
+                   .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections(tenant_id: connection)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "raises on expiry rather than trying to refresh what cannot be refreshed" do
+      stub = stub_request(:get, connections_endpoint)
+             .to_return(status: 401, body: JSON.dump("error" => "invalid_token"), headers: json_headers)
+
+      expect { app_client.connections }.to raise_error(XeroKiwi::AuthenticationError)
+      expect(stub).to have_been_requested.once
+    end
+  end
+
   describe "#connections" do
+    # The original behaviour, which a user token depends on: no argument,
+    # no header. Adding the tenant option must not start sending one.
+    it "sends no tenant header when none is given" do
+      stub = stub_request(:get, connections_endpoint)
+             .with { |request| !request.headers.key?("Xero-Tenant-Id") }
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      client.connections
+
+      expect(stub).to have_been_requested
+    end
+
     context "when talking to the live Xero API", vcr: { cassette_name: "connections/list" } do
       it "returns parsed XeroKiwi::Connection objects" do
         expect(client.connections).to all(be_a(XeroKiwi::Connection))
@@ -920,7 +986,7 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-PREPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD"
           }
@@ -1004,10 +1070,10 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-PREPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => "100.00" }]
+            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => 100.00 }]
           }
         ]
       }
@@ -1028,7 +1094,7 @@ RSpec.describe XeroKiwi::Client do
       expect(stub).to have_been_requested
       expect(prepayment).to be_a(XeroKiwi::Accounting::Prepayment)
       expect(prepayment.prepayment_id).to eq(prepayment_id)
-      expect(prepayment.total).to eq("100.00")
+      expect(prepayment.total).to eq(BigDecimal("100.00"))
     end
 
     it "accepts a XeroKiwi::Connection and uses its tenant_id" do
@@ -1257,7 +1323,7 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-OVERPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD"
           }
@@ -1341,10 +1407,10 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-OVERPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Overpayment", "LineAmount" => "100.00" }]
+            "LineItems"      => [{ "Description" => "Overpayment", "LineAmount" => 100.00 }]
           }
         ]
       }
@@ -1594,11 +1660,11 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "ACCREC",
             "Contact"        => { "ContactID" => "025867f1", "Name" => "City Agency" },
             "Status"         => "AUTHORISED",
-            "Total"          => "2025.00",
+            "Total"          => 2025.00,
             "UpdatedDateUTC" => "/Date(1518685950940+0000)/",
             "CurrencyCode"   => "NZD",
-            "AmountDue"      => "2025.00",
-            "AmountPaid"     => "0.00"
+            "AmountDue"      => 2025.00,
+            "AmountPaid"     => 0.00
           }
         ]
       }
@@ -1811,13 +1877,13 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "ACCREC",
             "Contact"        => { "ContactID" => "025867f1", "Name" => "City Agency" },
             "Status"         => "AUTHORISED",
-            "Total"          => "2025.00",
+            "Total"          => 2025.00,
             "UpdatedDateUTC" => "/Date(1518685950940+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => "1800.00" }],
-            "Payments"       => [{ "PaymentID" => "0d666415", "Amount" => "1000.00" }],
-            "AmountDue"      => "1025.00",
-            "AmountPaid"     => "1000.00"
+            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => 1800.00 }],
+            "Payments"       => [{ "PaymentID" => "0d666415", "Amount" => 1000.00 }],
+            "AmountDue"      => 1025.00,
+            "AmountPaid"     => 1000.00
           }
         ]
       }

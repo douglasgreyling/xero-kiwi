@@ -15,6 +15,7 @@ module XeroKiwi
       attribute :name,             xero: "Name",   query: true
       attribute :status,           xero: "Status", query: true
       attribute :contacts,         xero: "Contacts", type: :collection, of: Contact, reference: true
+      attribute :has_validation_errors, xero: "HasValidationErrors", type: :bool
 
       def active? = status == "ACTIVE"
     end

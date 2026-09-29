@@ -50,6 +50,7 @@ The OAuth instance is reused for several different operations. Some need
 - **`exchange_code`**: Yes (Xero requires it in the form body for the exchange).
 - **`revoke_token`**: No.
 - **`verify_id_token`**: No.
+- **`client_credentials_token`**: No — there is no redirect and no user.
 
 If you're building a "revoke-only" instance for a logout flow, or a
 "verify-only" instance for an external ID token, you don't need to invent a
@@ -357,6 +358,103 @@ verified = oauth.verify_id_token(
 
 The nonce check fails if the token doesn't contain a `nonce` claim, if the
 claim doesn't match what you sent, or if the comparison would have raised.
+
+## The client-credentials grant (no user)
+
+Everything above authenticates a *user* and yields a token scoped to the
+connections that user granted. The `client_credentials` grant authenticates
+the **application itself**. There is no redirect, no browser and no consent
+screen.
+
+```ruby
+oauth = XeroKiwi::OAuth.new(client_id: ENV["XERO_CLIENT_ID"],
+                            client_secret: ENV["XERO_CLIENT_SECRET"])
+
+token  = oauth.client_credentials_token(scopes: "app.connections")
+client = XeroKiwi::Client.new(access_token: token.access_token)
+
+client.connections(tenant_id: org_tenant_id)  # the tenant header is required here
+client.delete_connection(connection_id)       # remove a duplicate
+```
+
+### `connections` needs a tenant id on this grant
+
+`client.connections` with no argument returns **400** on a
+client-credentials token:
+
+```
+Xero-User-Id and/or Xero-Tenant-Id header must be supplied.
+```
+
+A user token identifies a user, so Xero can answer "which tenants can *you*
+see" unaided. An app token identifies nobody, so Xero needs telling which
+tenant is being asked about. Pass `tenant_id:` — a String or a
+`XeroKiwi::Connection`:
+
+```ruby
+client.connections(tenant_id: org_tenant_id)
+```
+
+`delete_connection` needs no tenant header and takes none.
+
+So "app tokens are untenanted" is true at the *token* level and not at the
+request level: the token carries no tenant, and the call still has to name
+one.
+
+### What it's for
+
+The calls that belong to the app rather than to any one connection —
+`connections` and `delete_connection`. Both are already non-tenanted, and
+this is how you get a token for them when **no user token is available**:
+tearing down an organisation, or reassigning which user owns a sync when
+the person who first connected it has gone.
+
+If a user token is available, use it. This grant exists for the case where
+one isn't.
+
+### `client_credentials_token` options
+
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `scopes:` | `String` or `Array<String>` | `nil` | Scopes to request. `"app.connections"` is the one for connection management. Several are joined with spaces, as in `authorization_url`. Omitted from the request entirely when `nil`, which lets Xero assign the app's own scopes. |
+
+### The token cannot be refreshed
+
+Xero issues **no refresh token** for this grant:
+
+```ruby
+token.refreshable?   # => false
+token.refresh_token  # => nil
+```
+
+So a `Client` holding one will raise `XeroKiwi::AuthenticationError` when
+the token expires, rather than renewing itself. That is deliberate, and it
+is not a problem to work around: renewal is just calling
+`client_credentials_token` again, which costs one request and needs no
+stored state. Fetch a token per operation and throw it away.
+
+Passing `client_id:` and `client_secret:` to the `Client` does not change
+this — `Client#can_refresh?` also requires a refresh token, so the
+auto-refresh paths stay out of the way.
+
+### Error behaviour
+
+| Cause | Exception |
+|-------|-----------|
+| Wrong `client_id` / `client_secret` | `XeroKiwi::OAuth::ClientCredentialsError` |
+| Scope the app isn't authorised for | `XeroKiwi::OAuth::ClientCredentialsError` |
+
+`ClientCredentialsError` subclasses `XeroKiwi::AuthenticationError`, so an
+existing `rescue XeroKiwi::AuthenticationError` still catches it. There is
+no user and no code to retry with, so the fix is the credentials or the
+scope — not a re-authorisation.
+
+### Throttling
+
+A client-credentials token is untenanted by definition, so the throttle has
+no tenant to attribute its usage to. See
+[Throttling](throttling.md) — this grant is covered by the same rule as any
+other untenanted call, not by a special case.
 
 ## Token revocation
 

@@ -9,16 +9,16 @@ RSpec.describe XeroKiwi::Accounting::Prepayment do
       "Date"            => "/Date(1222340661707+0000)/",
       "Status"          => "PAID",
       "LineAmountTypes" => "Inclusive",
-      "LineItems"       => [{ "Description" => "Consulting", "LineAmount" => "100.00" }],
-      "SubTotal"        => "86.96",
-      "TotalTax"        => "13.04",
-      "Total"           => "100.00",
+      "LineItems"       => [{ "Description" => "Consulting", "LineAmount" => 100.00 }],
+      "SubTotal"        => 86.96,
+      "TotalTax"        => 13.04,
+      "Total"           => 100.00,
       "UpdatedDateUTC"  => "/Date(1222340661707+0000)/",
       "CurrencyCode"    => "NZD",
-      "CurrencyRate"    => "1.000000",
+      "CurrencyRate"    => 1.000000,
       "InvoiceNumber"   => "INV-0001",
-      "RemainingCredit" => "0.00",
-      "Allocations"     => [{ "AppliedAmount" => "100.00", "Date" => "/Date(1222340661707+0000)/" }],
+      "RemainingCredit" => 0.00,
+      "Allocations"     => [{ "AppliedAmount" => 100.00, "Date" => "/Date(1222340661707+0000)/" }],
       "Payments"        => [],
       "HasAttachments"  => false,
       "FullyPaidOnDate" => "/Date(1222340661707+0000)/"
@@ -63,13 +63,13 @@ RSpec.describe XeroKiwi::Accounting::Prepayment do
         type:              "RECEIVE-PREPAYMENT",
         status:            "PAID",
         line_amount_types: "Inclusive",
-        sub_total:         "86.96",
-        total_tax:         "13.04",
-        total:             "100.00",
+        sub_total:         BigDecimal("86.96"),
+        total_tax:         BigDecimal("13.04"),
+        total:             BigDecimal("100.00"),
         currency_code:     "NZD",
-        currency_rate:     "1.000000",
+        currency_rate:     BigDecimal("1.000000"),
         invoice_number:    "INV-0001",
-        remaining_credit:  "0.00",
+        remaining_credit:  BigDecimal("0.00"),
         has_attachments:   false
       )
     end
@@ -95,7 +95,7 @@ RSpec.describe XeroKiwi::Accounting::Prepayment do
 
     it "wraps allocations as XeroKiwi::Accounting::Allocation objects" do
       expect(prepayment.allocations).to all(be_a(XeroKiwi::Accounting::Allocation))
-      expect(prepayment.allocations.first.applied_amount).to eq("100.00")
+      expect(prepayment.allocations.first.applied_amount).to eq(BigDecimal("100.00"))
     end
 
     it "defaults collection attributes to empty arrays when absent" do

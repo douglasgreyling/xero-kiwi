@@ -50,6 +50,7 @@ fields Xero returns:
 | `contact_group_id` | `String` | The unique Xero identifier for the group. |
 | `name` | `String` | The display name (e.g. "VIP Customers"). |
 | `status` | `String` | `"ACTIVE"` (only active groups are returned by Xero). |
+| `has_validation_errors` | `Boolean` | Whether Xero flagged validation errors on the group. |
 | `contacts` | `Array<XeroKiwi::Accounting::Contact>` | The contacts in the group (references — each has `reference?` returning `true`). Only present when fetching a single group. See [Contacts](contact.md). |
 
 ## Predicates

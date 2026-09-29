@@ -33,6 +33,8 @@ module XeroKiwi
       attribute :sent_to_contact,                 xero: "SentToContact",              type: :bool
       attribute :expected_payment_date,           xero: "ExpectedPaymentDate",        type: :date
       attribute :planned_payment_date,            xero: "PlannedPaymentDate",         type: :date
+      attribute :is_discounted,                   xero: "IsDiscounted",               type: :bool
+      attribute :has_errors,                      xero: "HasErrors",                  type: :bool
       attribute :has_attachments,                 xero: "HasAttachments",             type: :bool
       attribute :repeating_invoice_id,            xero: "RepeatingInvoiceID",         type: :guid
       attribute :payments,                        xero: "Payments",                   type: :collection, of: Payment,     reference: true
@@ -44,7 +46,6 @@ module XeroKiwi
       attribute :amount_credited,                 xero: "AmountCredited",             type: :decimal
       attribute :cis_deduction,                   xero: "CISDeduction",               type: :decimal
       attribute :fully_paid_on_date,              xero: "FullyPaidOnDate",            type: :date
-      attribute :sales_tax_calculation_type_code, xero: "SalesTaxCalculationTypeCode"
       attribute :invoice_addresses,               xero: "InvoiceAddresses", hydrate: ->(raw) { raw || [] }
 
       def accounts_receivable? = type == "ACCREC"

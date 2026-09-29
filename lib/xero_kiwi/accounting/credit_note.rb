@@ -22,6 +22,7 @@ module XeroKiwi
       attribute :sub_total,          xero: "SubTotal",         type: :decimal
       attribute :total_tax,          xero: "TotalTax",         type: :decimal
       attribute :total,              xero: "Total",            type: :decimal
+      attribute :applied_amount,     xero: "AppliedAmount",    type: :decimal
       attribute :cis_deduction,      xero: "CISDeduction",     type: :decimal
       attribute :updated_date_utc,   xero: "UpdatedDateUTC",   type: :date, query: true
       attribute :currency_code,      xero: "CurrencyCode"
@@ -33,6 +34,8 @@ module XeroKiwi
       attribute :allocations,        xero: "Allocations",      type: :collection, of: "Allocation"
       attribute :payments,           xero: "Payments",         type: :collection, of: "Payment", reference: true
       attribute :branding_theme_id,  xero: "BrandingThemeID",  type: :guid
+      attribute :has_errors,         xero: "HasErrors",        type: :bool
+      attribute :invoice_addresses,  xero: "InvoiceAddresses", hydrate: ->(raw) { raw || [] }
       attribute :has_attachments,    xero: "HasAttachments",   type: :bool
 
       def accounts_receivable? = type == "ACCRECCREDIT"

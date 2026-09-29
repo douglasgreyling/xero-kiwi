@@ -9,15 +9,15 @@ RSpec.describe XeroKiwi::Accounting::Overpayment do
       "Date"            => "/Date(1401062400000+0000)/",
       "Status"          => "PAID",
       "LineAmountTypes" => "Inclusive",
-      "LineItems"       => [{ "Description" => "Overpayment", "LineAmount" => "100.00" }],
-      "SubTotal"        => "86.96",
-      "TotalTax"        => "13.04",
-      "Total"           => "100.00",
+      "LineItems"       => [{ "Description" => "Overpayment", "LineAmount" => 100.00 }],
+      "SubTotal"        => 86.96,
+      "TotalTax"        => 13.04,
+      "Total"           => 100.00,
       "UpdatedDateUTC"  => "2015-03-29T23:43:01.097",
       "CurrencyCode"    => "NZD",
-      "CurrencyRate"    => "1.000000",
-      "RemainingCredit" => "0.00",
-      "Allocations"     => [{ "AllocationID" => "b12335f4", "AppliedAmount" => "100.00" }],
+      "CurrencyRate"    => 1.000000,
+      "RemainingCredit" => 0.00,
+      "Allocations"     => [{ "AllocationID" => "b12335f4", "AppliedAmount" => 100.00 }],
       "Payments"        => [],
       "HasAttachments"  => false,
       "Reference"       => "Overpayment Reference"
@@ -62,12 +62,12 @@ RSpec.describe XeroKiwi::Accounting::Overpayment do
         type:              "RECEIVE-OVERPAYMENT",
         status:            "PAID",
         line_amount_types: "Inclusive",
-        sub_total:         "86.96",
-        total_tax:         "13.04",
-        total:             "100.00",
+        sub_total:         BigDecimal("86.96"),
+        total_tax:         BigDecimal("13.04"),
+        total:             BigDecimal("100.00"),
         currency_code:     "NZD",
-        currency_rate:     "1.000000",
-        remaining_credit:  "0.00",
+        currency_rate:     BigDecimal("1.000000"),
+        remaining_credit:  BigDecimal("0.00"),
         has_attachments:   false,
         reference:         "Overpayment Reference"
       )
@@ -93,7 +93,7 @@ RSpec.describe XeroKiwi::Accounting::Overpayment do
 
     it "wraps allocations as XeroKiwi::Accounting::Allocation objects" do
       expect(overpayment.allocations).to all(be_a(XeroKiwi::Accounting::Allocation))
-      expect(overpayment.allocations.first.applied_amount).to eq("100.00")
+      expect(overpayment.allocations.first.applied_amount).to eq(BigDecimal("100.00"))
     end
 
     it "defaults collection attributes to empty arrays when absent" do

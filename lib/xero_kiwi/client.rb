@@ -95,10 +95,26 @@ module XeroKiwi
     end
 
     # Fetches the list of tenants the current access token has access to.
+    #
+    # `tenant_id:` is optional for a user token and **required for a
+    # client-credentials token**. A user token identifies a user, so Xero
+    # can answer "which tenants can you see" unaided. An app token
+    # identifies nobody, so Xero needs telling which tenant is being asked
+    # about and answers 400 otherwise:
+    #
+    #   Xero-User-Id and/or Xero-Tenant-Id header must be supplied.
+    #
+    # Accepts a tenant-id String or a XeroKiwi::Connection. Passing nil
+    # sends no header, which is the original behaviour.
+    #
     # See: https://developer.xero.com/documentation/best-practices/managing-connections/connections
-    def connections
+    def connections(tenant_id: nil)
+      tid = extract_tenant_id(tenant_id)
+
       with_authenticated_request do
-        response = http.get("/connections")
+        response = http.get("/connections") do |req|
+          req.headers["Xero-Tenant-Id"] = tid unless tid.nil? || tid.empty?
+        end
         Connection.from_response(response.body)
       end
     end

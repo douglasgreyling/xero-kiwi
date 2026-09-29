@@ -54,6 +54,12 @@ module XeroKiwi
     # should restart the OAuth flow from the authorise step.
     class CodeExchangeError < AuthenticationError; end
 
+    # Raised when a client-credentials grant is refused — bad client_id or
+    # secret, or a scope the app isn't authorised for. There is no user and
+    # no code to retry with, so the caller's options are to fix the
+    # credentials or the scope.
+    class ClientCredentialsError < AuthenticationError; end
+
     # Raised when an id_token JWT can't be verified — bad signature, wrong
     # issuer/audience, expired, or nonce mismatch.
     class IDTokenError < XeroKiwi::Error; end
@@ -133,6 +139,37 @@ module XeroKiwi
       raise CodeExchangeError.new(e.status, e.body)
     end
 
+    # Fetches a token via the `client_credentials` grant — Xero's
+    # *non-tenanted* flow, authenticating the application itself rather than
+    # a user.
+    #
+    #   token  = oauth.client_credentials_token(scopes: "app.connections")
+    #   client = XeroKiwi::Client.new(access_token: token.access_token)
+    #   client.connections
+    #
+    # Use it for the calls that belong to the app rather than to a
+    # connection — listing and deleting connections in particular, which is
+    # the one thing you may need to do when no user token exists, such as
+    # tearing down an organisation or reassigning who owns a sync.
+    #
+    # `redirect_uri` is not required: there is no redirect and no user.
+    #
+    # **The token it returns cannot be refreshed.** Xero issues no refresh
+    # token for this grant, so `token.refreshable?` is false and a Client
+    # holding one will raise `AuthenticationError` on expiry rather than
+    # renewing itself. That is deliberate — the renewal is simply to call
+    # this again, which costs one request and needs no stored state.
+    #
+    # Note the token is also untenanted, so the throttle has no tenant to
+    # attribute its usage to. See XeroKiwi::Throttle::Middleware.
+    def client_credentials_token(scopes: nil)
+      requested_at = Time.now
+      response     = post_client_credentials(scopes)
+      Token.from_oauth_response(response.body, requested_at: requested_at)
+    rescue AuthenticationError, ClientError => e
+      raise ClientCredentialsError.new(e.status, e.body)
+    end
+
     # Revokes a refresh token at Xero's revocation endpoint (RFC 7009).
     # Revoking the refresh token also invalidates every access token that
     # was issued from it, so this is the right call to clean up after
@@ -193,6 +230,24 @@ module XeroKiwi
         req.headers["Accept"]        = "application/json"
         req.body                     = URI.encode_www_form(token_exchange_body(code, code_verifier))
       end
+    end
+
+    def post_client_credentials(scopes)
+      http.post(Identity::TOKEN_PATH) do |req|
+        req.headers["Authorization"] = Identity.basic_auth_header(client_id, client_secret)
+        req.headers["Content-Type"]  = "application/x-www-form-urlencoded"
+        req.headers["Accept"]        = "application/json"
+        req.body                     = URI.encode_www_form(client_credentials_body(scopes))
+      end
+    end
+
+    # Xero assigns the app's own scopes when none is given, so the param is
+    # omitted rather than sent empty.
+    def client_credentials_body(scopes)
+      body          = { grant_type: "client_credentials" }
+      requested     = Array(scopes).reject { |scope| scope.nil? || scope.to_s.empty? }
+      body[:scope]  = requested.join(" ") unless requested.empty?
+      body
     end
 
     def token_exchange_body(code, code_verifier)

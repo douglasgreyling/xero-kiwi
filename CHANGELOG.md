@@ -1,5 +1,89 @@
 ## [Unreleased]
 
+### Breaking
+
+- **Money attributes now return `BigDecimal` instead of `Float`.** Xero sends money as a JSON number, so Ruby parsed it into a Float and the `:decimal` type declaration passed it straight through, doing nothing. Floats cannot represent most decimal fractions, so arithmetic between two money fields drifts while each one still prints correctly:
+
+  ```ruby
+  17228.67 + 2584.3   # => 19812.969999999998, where Xero's Total is 19812.97
+  ```
+
+  Measured against the recorded `invoices/list` response, `sub_total + total_tax == total` failed on **3 of 55 invoices** as Floats and on **none** as BigDecimals. Every individual value round-trips exactly — all 111 distinct money literals in that recording — so the failure only appears once you do arithmetic, which is what makes it quiet.
+
+  Applies to all 36 `:decimal` attributes across `Invoice`, `CreditNote`, `Prepayment`, `Overpayment`, `Payment`, `Allocation` and `LineItem`. Floats and Integers convert via `#to_d`, which uses the shortest decimal that round-trips, so BigDecimal holds the number Xero wrote rather than the binary approximation of it. Numeric strings are parsed with `BigDecimal()` rather than `String#to_d`, because `to_d` answers `0.0` for unparseable input and a silent zero in a money field is the failure this gem has shipped twice. Unparseable input reads as `nil`, as it does for `:date`.
+
+  Upgrading: comparison is not a concern — `BigDecimal("19812.97")` equals the Float `19812.97`, and a `decimal`/`numeric` column takes it unchanged. A consumer verified that last point on real data, passing five money fields straight into decimal columns with no conversion and getting identical rows.
+
+  Two things do change. `to_s` gives `"0.1981297e5"` rather than `"19812.97"` (use `to_s("F")`), and `to_json` gives that same scientific-notation **string** where a Float gave a JSON number — a visible change in shape if you write a **typed** money attribute into a `jsonb` column. **`raw` is unaffected**: it holds Xero's parsed payload untouched, so money in there is still a Float and still serialises as a JSON number. `#inspect` renders decimals in plain form, so debugging output is unaffected.
+
+  **Check for `.to_f` on money you persist.** It silently undoes this change, and a `decimal(19,4)` column holds more precision than a Float can carry — `BigDecimal("1234567890123.4567").to_f` round-trips to `1234567890123.456`. Out of reach for GBP or ZAR at ordinary invoice sizes, not for IDR or VND. A `.to_f` left over from an XML-era client, where the value arrived as a String, is where to look.
+
+- **`""` now reads as `nil` on `:decimal` attributes too.** 0.8.0 normalised empty strings on `:string`, `:enum` and `:guid` and explicitly left `:decimal` alone as wanting its own decision. This is that decision. The alternative was `BigDecimal("")` raising, or a silent zero — the same shape as both allocation regressions.
+
+- **Removed `Invoice#sales_tax_calculation_type_code`.** It read the payload key `"SalesTaxCalculationTypeCode"`, which appears in none of this gem's recorded responses, nowhere in Xero's 911K OpenAPI spec, and in none of a consumer's 368 recorded interactions across both the XML and JSON eras. Xero has no invoice-level sales-tax-calculation field under any name; its US sales tax fields are on the line item. The reader has returned `nil` since the first commit.
+
+  Removing it cannot break working code, because there has never been a value to depend on. It is listed as Breaking because the method disappears: a caller reading it goes from a silent `nil` to a `NoMethodError`, which is the same trade the empty-string change made in 0.8.0. If Xero ever does send the key, `retain_raw: true` exposes it through `invoice.raw`.
+
+  Recording why it went, so nobody re-adds it from the same plausible-sounding guess: it was never verified against a payload or a schema, and it was documented as "US auto sales tax calculation type", which made a permanent `nil` read as an answer about the organisation rather than a gap in the gem.
+
+### Fixed
+
+- **`invoice.credit_notes`, `invoice.prepayments` and `invoice.overpayments` returned objects with the applied amount missing.** Xero nests **allocation stubs** under an invoice, not whole documents: a stub carries `AppliedAmount`, the amount applied to *that* invoice. Nothing modelled that key, so the nearest-looking reader was `total` — the document's own total, and a different number on **19 of the 24 stubs** in the recorded response. On one, `total` was `10983.65` where `applied_amount` was `857.35`.
+
+  All three resources now model `applied_amount`. It is `nil` on a document fetched in its own right, where Xero sends no such key, and populated on every stub in the recording. The only route to it before was `invoice.raw["CreditNotes"]` with `retain_raw: true`, since nested objects carry no `#raw`.
+
+  Found by the coverage task below rather than by comparison or by reading Xero's docs — the key is in no doc table, because the docs describe the XML representation and this shape only exists in JSON.
+
+- **`LineItem#account_id` was reading a key Xero does not send.** It mapped to `"AccountId"`; Xero sends `"AccountID"`, so the attribute was `nil` on every line item ever returned. The string `AccountId` appears **zero times** in Xero's 911K OpenAPI spec, and a consumer's recorded JSON response carries `AccountID` on all 18 of its populated line items.
+
+  No recording in this repo could have caught it: list endpoints omit line items, so `LineItem` has never had a real payload here. It was found by comparing the classes against Xero's published spec, which is now `rake xero:schema`.
+
+### Added
+
+- **`XeroKiwi::OAuth#client_credentials_token`** — Xero's non-tenanted `client_credentials` grant, authenticating the application rather than a user.
+
+  ```ruby
+  token  = oauth.client_credentials_token(scopes: "app.connections")
+  client = XeroKiwi::Client.new(access_token: token.access_token)
+  client.connections
+  ```
+
+  It is for the calls that belong to the app rather than to a connection — `connections` and `delete_connection`, both already non-tenanted — in the case where **no user token is available**: tearing down an organisation, or reassigning which user owns a sync. Without it, a consumer managing connections has to hand-roll the same POST, which is what prompted this: one had ported everything off its legacy client except this single grant, and was keeping the old client alive to serve it.
+
+  `redirect_uri` is not required. `scopes:` takes a String or an Array, joined the way `authorization_url` joins them, and is omitted from the request entirely when nil so Xero assigns the app's own scopes.
+
+  **The token cannot be refreshed.** Xero issues none for this grant, so `token.refreshable?` is false and a `Client` holding one raises `AuthenticationError` on expiry rather than attempting a renewal that cannot succeed — `Client#can_refresh?` already required a refresh token, so no change was needed there. Renewal is calling this again, which costs one request and needs no stored state.
+
+  Failures raise `XeroKiwi::OAuth::ClientCredentialsError`, which subclasses `AuthenticationError` so existing rescues still catch it.
+
+**`Client#connections` takes an optional `tenant_id:`**, which that grant requires. A user token identifies a user, so Xero can answer "which tenants can you see" unaided; an app token identifies nobody and answers `400 Xero-User-Id and/or Xero-Tenant-Id header must be supplied.` Measured by a consumer against live Xero — same token, same request, one header apart. It takes a String or a `XeroKiwi::Connection`; omitting it sends no header, which is what a user token wants and is unchanged. `delete_connection` needs no tenant header and takes none.
+
+So "app tokens are untenanted" holds at the *token* level and not at the request level. The first version of these docs showed `client.connections` on a client-credentials token, which is the call that 400s.
+
+- `Accounting::Organisation` now models `tax_number_name`, which names what the organisation's locale calls its tax number (`"VAT Number"` on the recorded tenant). Present and populated in the recording, previously reachable only through `raw`.
+
+- Fields Xero's spec documents and the recordings confirm on every record, all previously reachable only through `raw`: `Invoice#is_discounted`, `Invoice#has_errors`, `CreditNote#has_errors`, `CreditNote#invoice_addresses`, `Contact#has_validation_errors`, `Payment#has_validation_errors`, `ContactGroup#has_validation_errors`, and `Prepayment#branding_theme_id`.
+
+- **`attribute` accepts several candidate keys**, as `xero: %w[TrackingCategoryOption TrackingOptionName]`. The first one present in the payload wins. It is for a field with no recorded payload to settle which key Xero sends: a wrong single key reads `nil` forever and is indistinguishable from a field the tenant never fills, which is how two regressions shipped. `Contact#tracking_option_name` uses it — Xero's spec calls that field `TrackingCategoryOption`, kiwi called it `TrackingOptionName`, and neither spelling appears in any recording because no tenant to hand has a contact-level tracking default.
+
+- **`rake xero:schema`** compares the resource classes against Xero's published OpenAPI spec, cached for a day. It is the other half of `xero:coverage`: a recording shows what one tenant populated, the spec shows what an endpoint can return at all. Each has caught what the other missed — the spec found the `AccountID` bug that no payload here could, and the recordings hold `User#GlobalUserID`, which the spec omits entirely and whose absence emptied a consumer's memberships table.
+
+  It reports rather than fails, for the same reason `xero:coverage` does, and because the spec is not authoritative on its own: it documents `CreditNote#DueDate`, which Xero sends on none of the 18 recorded credit notes, and omits the four `TrackingOption` booleans that a live capture proved real. Treat a difference as a question; a payload settles it where one exists.
+
+- **`rake xero:coverage`** compares every recorded response against the resource classes that model it, and reports keys Xero sends that nothing reads, attributes nil in every recording, declared types that disagree with what arrived, and classes no recording exercises. Every silent bug this gem has shipped would have appeared in one of those four lists, with the disproving payload already committed. It reports rather than fails: gating it would need an allowlist of legitimately-absent keys, and an allowlist becomes a list nobody reads.
+
+  It also names the blind spot, and distinguishes *no cassette here* from *unverified*, which are not the same thing. `LineItem`, `Tracking`, `TrackingCategory` and `TrackingOption` have no cassette in this repo but have each been checked against a real response elsewhere — the task now says so, and says which. `Tracking` was the last class resting on Xero's spec alone, and a live `GET /Invoices/{id}` on a line item carrying two tracking categories settled it: four keys sent, four modelled, none nil. Only `ExternalLink` is genuinely unverified — no payload anywhere has carried a populated instance.
+
+  The walk also descends into attributes that hydrate through a custom lambda, which it previously skipped. `PaymentTerms` and `PaymentTerm` had read as exercised by nothing while a recorded contact carried both, and the type check immediately showed `PaymentTerm#day` arriving as an Integer against a `:string` declaration. Those attributes now declare `of:` purely so the audit can find the class; `Hydrator` ignores it when `hydrate:` is set.
+
+### Documentation
+
+- Money attribute types were documented three different ways for the same field — `String` on Overpayment and Prepayment, `Numeric` on CreditNote and Payment, `String/Numeric` on Invoice — and three examples showed `total # => "100.00"`, a quoted string it never was. All 32 rows now say `BigDecimal`, generated from the attribute declarations so they cannot drift apart again.
+
+- Each of Credit Note, Prepayment and Overpayment gained a **Nested under an invoice** section covering the stub shape, with the figures taken from the recorded response rather than invented.
+
+- `docs/client.md` documents money as a fourth thing to check when migrating from an XML client, alongside the existing nesting, key-name and type axes.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added

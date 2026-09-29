@@ -37,7 +37,9 @@ module Coverage
     "TrackingCategory" => "live GET /TrackingCategories capture, 0.8.0 — every key modelled, nothing left over",
     "TrackingOption"   => "same capture — the four booleans were added from it",
     "LineItem"         => "a consumer's recorded credit-note response, 18 populated line items — " \
-                          "every key modelled; it is what proved AccountID over AccountId"
+                          "every key modelled; it is what proved AccountID over AccountId",
+    "Tracking"         => "a live GET /Invoices/{id} on a line item carrying two tracking categories — " \
+                          "four keys sent, four modelled, none nil"
   }.freeze
 
   EXPECTED_CLASSES = {

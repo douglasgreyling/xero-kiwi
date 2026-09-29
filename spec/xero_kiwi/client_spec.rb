@@ -920,7 +920,7 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-PREPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD"
           }
@@ -1004,10 +1004,10 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-PREPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => "100.00" }]
+            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => 100.00 }]
           }
         ]
       }
@@ -1028,7 +1028,7 @@ RSpec.describe XeroKiwi::Client do
       expect(stub).to have_been_requested
       expect(prepayment).to be_a(XeroKiwi::Accounting::Prepayment)
       expect(prepayment.prepayment_id).to eq(prepayment_id)
-      expect(prepayment.total).to eq("100.00")
+      expect(prepayment.total).to eq(BigDecimal("100.00"))
     end
 
     it "accepts a XeroKiwi::Connection and uses its tenant_id" do
@@ -1257,7 +1257,7 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-OVERPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD"
           }
@@ -1341,10 +1341,10 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "RECEIVE-OVERPAYMENT",
             "Contact"        => { "ContactID" => "c6c7b870", "Name" => "Mr Contact" },
             "Status"         => "PAID",
-            "Total"          => "100.00",
+            "Total"          => 100.00,
             "UpdatedDateUTC" => "/Date(1222340661707+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Overpayment", "LineAmount" => "100.00" }]
+            "LineItems"      => [{ "Description" => "Overpayment", "LineAmount" => 100.00 }]
           }
         ]
       }
@@ -1594,11 +1594,11 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "ACCREC",
             "Contact"        => { "ContactID" => "025867f1", "Name" => "City Agency" },
             "Status"         => "AUTHORISED",
-            "Total"          => "2025.00",
+            "Total"          => 2025.00,
             "UpdatedDateUTC" => "/Date(1518685950940+0000)/",
             "CurrencyCode"   => "NZD",
-            "AmountDue"      => "2025.00",
-            "AmountPaid"     => "0.00"
+            "AmountDue"      => 2025.00,
+            "AmountPaid"     => 0.00
           }
         ]
       }
@@ -1811,13 +1811,13 @@ RSpec.describe XeroKiwi::Client do
             "Type"           => "ACCREC",
             "Contact"        => { "ContactID" => "025867f1", "Name" => "City Agency" },
             "Status"         => "AUTHORISED",
-            "Total"          => "2025.00",
+            "Total"          => 2025.00,
             "UpdatedDateUTC" => "/Date(1518685950940+0000)/",
             "CurrencyCode"   => "NZD",
-            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => "1800.00" }],
-            "Payments"       => [{ "PaymentID" => "0d666415", "Amount" => "1000.00" }],
-            "AmountDue"      => "1025.00",
-            "AmountPaid"     => "1000.00"
+            "LineItems"      => [{ "Description" => "Consulting", "LineAmount" => 1800.00 }],
+            "Payments"       => [{ "PaymentID" => "0d666415", "Amount" => 1000.00 }],
+            "AmountDue"      => 1025.00,
+            "AmountPaid"     => 1000.00
           }
         ]
       }

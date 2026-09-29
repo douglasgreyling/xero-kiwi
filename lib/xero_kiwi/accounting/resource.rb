@@ -212,6 +212,8 @@ module XeroKiwi
           "[#{value.size} items]"
         when :object
           value.nil? ? "nil" : format_nested_object(value)
+        when :decimal
+          value.nil? ? "nil" : value.to_s("F")
         else
           value.inspect
         end

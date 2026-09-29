@@ -46,10 +46,12 @@ RSpec.describe XeroKiwi::Accounting::Hydrator do
         expect(described_class.call(" ", { type: :string })).to eq(" ")
       end
 
-      # Untouched for now: no evidence Xero sends "" for a numeric field,
-      # and "".to_f is 0.0, so this would want its own decision.
-      it "leaves decimals alone" do
-        expect(described_class.call("", { type: :decimal })).to eq("")
+      # Decimals were left alone when text types were normalised, on the
+      # grounds that it wanted its own decision. This is that decision: ""
+      # means absent here too, and the alternative is a silent zero in a
+      # money field.
+      it "reads as nil on decimals" do
+        expect(described_class.call("", { type: :decimal })).to be_nil
       end
 
       it "does not disturb ordinary values" do
@@ -58,13 +60,46 @@ RSpec.describe XeroKiwi::Accounting::Hydrator do
     end
 
     context "with pass-through types" do
-      it "returns a non-empty raw value unchanged for :string, :enum, :guid, :bool, :decimal" do
-        %i[string enum guid bool decimal].each do |type|
+      it "returns a non-empty raw value unchanged for :string, :enum, :guid" do
+        %i[string enum guid].each do |type|
           expect(described_class.call("abc", { type: type })).to eq("abc")
         end
 
         expect(described_class.call(true, { type: :bool })).to be true
-        expect(described_class.call(123.45, { type: :decimal })).to eq(123.45)
+      end
+    end
+
+    # Xero sends money as a JSON number. Floats drift under arithmetic even
+    # when each value round-trips exactly, which is what makes the failure
+    # quiet: every field looks right and only the sum is wrong.
+    context "with :decimal" do
+      it "converts Xero's JSON numbers to BigDecimal" do
+        expect(described_class.call(123.45, { type: :decimal })).to eql(BigDecimal("123.45"))
+      end
+
+      it "converts integers too" do
+        expect(described_class.call(100, { type: :decimal })).to eql(BigDecimal("100"))
+      end
+
+      it "takes the decimal Xero wrote, not the Float approximation of it" do
+        expect(described_class.call(19_812.97, { type: :decimal }).to_s("F")).to eq("19812.97")
+      end
+
+      it "parses a numeric string" do
+        expect(described_class.call("521.23", { type: :decimal })).to eql(BigDecimal("521.23"))
+      end
+
+      # String#to_d answers 0.0 here, and a silent zero in a money column is
+      # the failure this gem has shipped twice.
+      it "reads unparseable input as nil rather than zero" do
+        expect(described_class.call("not a number", { type: :decimal })).to be_nil
+      end
+
+      it "restores the identity that Floats break" do
+        sub_total = described_class.call(17_228.67, { type: :decimal })
+        total_tax = described_class.call(2_584.3, { type: :decimal })
+
+        expect(sub_total + total_tax).to eq(described_class.call(19_812.97, { type: :decimal }))
       end
     end
 

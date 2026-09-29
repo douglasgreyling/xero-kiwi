@@ -5,15 +5,15 @@ RSpec.describe XeroKiwi::Accounting::LineItem do
     {
       "LineItemID"     => "52208ff9-528a-4985-a9ad-b2b1d4210e38",
       "Description"    => "Onsite project management",
-      "Quantity"       => "1.0000",
-      "UnitAmount"     => "1800.00",
+      "Quantity"       => 1.0000,
+      "UnitAmount"     => 1800.00,
       "ItemCode"       => "12",
       "AccountCode"    => "200",
       "AccountId"      => "4f2a3169-8454-4012-a642-05a88ef32982",
       "TaxType"        => "OUTPUT",
-      "TaxAmount"      => "225.00",
-      "LineAmount"     => "1800.00",
-      "DiscountRate"   => "20",
+      "TaxAmount"      => 225.00,
+      "LineAmount"     => 1800.00,
+      "DiscountRate"   => 20,
       "DiscountAmount" => nil,
       "Tracking"       => [
         {
@@ -37,15 +37,15 @@ RSpec.describe XeroKiwi::Accounting::LineItem do
       expect(item).to have_attributes(
         line_item_id:    "52208ff9-528a-4985-a9ad-b2b1d4210e38",
         description:     "Onsite project management",
-        quantity:        "1.0000",
-        unit_amount:     "1800.00",
+        quantity:        BigDecimal("1.0000"),
+        unit_amount:     BigDecimal("1800.00"),
         item_code:       "12",
         account_code:    "200",
         account_id:      "4f2a3169-8454-4012-a642-05a88ef32982",
         tax_type:        "OUTPUT",
-        tax_amount:      "225.00",
-        line_amount:     "1800.00",
-        discount_rate:   "20",
+        tax_amount:      BigDecimal("225.00"),
+        line_amount:     BigDecimal("1800.00"),
+        discount_rate:   BigDecimal("20"),
         discount_amount: nil
       )
     end

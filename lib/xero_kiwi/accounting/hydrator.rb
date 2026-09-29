@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "time"
+require "bigdecimal"
+require "bigdecimal/util"
 
 module XeroKiwi
   module Accounting
@@ -9,7 +11,8 @@ module XeroKiwi
     #
     # Supported types:
     #
-    #   :string / :enum / :guid / :bool / :decimal  - pass-through
+    #   :string / :enum / :guid / :bool             - pass-through
+    #   :decimal                                    - parsed to a BigDecimal
     #   :date                                       - parsed to a UTC Time
     #   :object                                     - Klass.new(raw[, reference: true])
     #   :collection                                 - Array of Klass.new(item[, reference: true])
@@ -28,10 +31,12 @@ module XeroKiwi
         hydrate_typed(raw, spec)
       end
 
+      # rubocop:disable-next Metrics/CyclomaticComplexity -- one branch per declared type
       def hydrate_typed(raw, spec)
         case spec[:type]
         when :string, :enum, :guid then blank_to_nil(raw)
-        when :bool, :decimal       then raw
+        when :bool                 then raw
+        when :decimal              then parse_decimal(raw)
         when :date                 then parse_time(raw)
         when :object               then build_object(raw, spec)
         when :collection           then raw.map { |item| build_object(item, spec) }
@@ -53,6 +58,43 @@ module XeroKiwi
       # differently was an inconsistency, not a principle.
       def blank_to_nil(value)
         value == "" ? nil : value
+      end
+
+      # Xero sends money as a JSON number, which Ruby's parser turns into a
+      # Float. Floats cannot represent most decimal fractions exactly, so
+      # arithmetic between two of them drifts. Measured against a recorded
+      # response, `sub_total + total_tax == total` failed on 3 of 55 real
+      # invoices as Floats and on none of them as BigDecimals:
+      #
+      #   17228.67 + 2584.3  # => 19812.969999999998, where Total is 19812.97
+      #
+      # Each individual value round-trips exactly; it is only arithmetic
+      # between fields that goes wrong, which is what makes it quiet.
+      #
+      # Floats and Integers convert via #to_d, which uses the shortest
+      # decimal that round-trips, so BigDecimal gets the number Xero wrote
+      # rather than the binary approximation of it. Strings go through
+      # BigDecimal() rather than String#to_d because #to_d answers 0.0 for
+      # unparseable input, and a silent zero in a money field is the exact
+      # failure this gem has shipped twice.
+      #
+      # Unparseable input returns nil, as parse_time does. "" is nil for the
+      # same reason it is on a string attribute: Xero means absent by it.
+      def parse_decimal(value)
+        case value
+        when BigDecimal     then value
+        when Float, Integer then value.to_d
+        when String         then decimal_from_string(value)
+        end
+      end
+
+      def decimal_from_string(value)
+        str = value.strip
+        return nil if str.empty?
+
+        BigDecimal(str)
+      rescue ArgumentError
+        nil
       end
 
       # Xero uses two timestamp formats depending on the endpoint:

@@ -147,6 +147,41 @@ RSpec.describe XeroKiwi::Throttle::RedisTokenBucket do
       end
     end
 
+    # Both buckets trickle — capacity / window per millisecond — rather than
+    # resetting on a boundary. The day bucket's docstring used to claim its
+    # wait was "measured in hours", which sent a consumer off designing an
+    # hourly sweep before they measured it. Pin the real magnitude.
+    describe "refill semantics" do
+      it "hands back the wait for one token, not the wait until a reset" do
+        bucket = build_bucket(per_day: 4_900)
+        redis.hset("#{XeroKiwi::Throttle::RedisTokenBucket::DEFAULT_NAMESPACE}:tenant-D:day",
+                   "tokens", 0, "last_refill_ms", clock.call)
+
+        expect { bucket.acquire("tenant-D") }.to raise_error(XeroKiwi::Throttle::DailyLimitExhausted) { |error|
+          expect(error.retry_after).to be_within(1.0).of(17.6)
+        }
+      end
+
+      # A token bucket's capacity IS its burst allowance, so a fresh bucket
+      # can spend a full capacity and everything that refills during the same
+      # window — close to double. per_minute: 55 therefore does NOT keep a
+      # cold start under Xero's 60, which the docs now say plainly.
+      it "allows close to double the configured rate in the first window" do
+        granted = 0
+        start   = clock.call
+        bucket  = build_bucket(per_minute: 10, max_wait: 3600.0)
+
+        while clock.call - start < 60_000
+          bucket.acquire("tenant-E")
+          break if clock.call - start >= 60_000
+
+          granted += 1
+        end
+
+        expect(granted).to eq(19)
+      end
+    end
+
     # Both throttle errors name the tenant they relate to, so a caller
     # recording a durable back-off signal doesn't have to infer it from
     # surrounding context.

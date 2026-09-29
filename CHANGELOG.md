@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Documentation
+
+- **Corrected what `Throttle::DailyLimitExhausted#retry_after` actually means.** Its docstring said the wait was "typically measured in hours" and described a reset boundary. The day bucket trickles like the minute bucket — `capacity / window_ms` per millisecond — so at `per_day: 4_900` a token accrues every 17.6 seconds, and that is what `retry_after` returns. There is no reset in the arithmetic. Reported by a consumer who read the comment, believed the wait would be hours, and designed an hourly sweep around it before measuring.
+
+  Re-enqueueing rather than blocking is still correct, but for a different reason than the docstring gave: a sync needing several hundred more calls waits 17.6s for each of them, which is hours in aggregate even though each wait is short.
+
+- **Documented what `per_minute` and `per_day` actually guarantee.** A token bucket's configured value is both its capacity and its refill rate, and a fresh bucket starts full — so the first window can spend the capacity *and* everything refilling during it. Measured: `per_minute: 55` allows **109 calls in the first 60 seconds**, not 55. The `Choosing limits` table recommends exactly that value as headroom under Xero's 60, which it is not at a cold start; steady state does converge on the configured rate. Halve the value if you need a hard ceiling in any single window. Both behaviours now have specs so a future change is deliberate.
+
+- Noted that the two `retry_after` sources are orders of magnitude apart — Xero's reported wait on a daily 429 can be long, while `DailyLimitExhausted` is always seconds — and that anything recording a durable back-off should tag which one it came from.
+
 ## [0.7.0] - 2026-09-27
 
 ### Added

@@ -116,6 +116,21 @@ Three things worth knowing when you write this:
 - **`tenant_id` is on the exception for a reason.** Don't infer it from
   surrounding context — that breaks the moment one client serves more than
   one tenant.
+- **The two `retry_after` values are orders of magnitude apart.** Keep them
+  distinguishable, which is what the `source:` in the example above is for.
+
+| Source | Whose limit | Typical magnitude |
+|---|---|---|
+| `RateLimitError` | Xero's, reported by Xero | seconds to hours, and on a daily 429 it can be genuinely long |
+| `Throttle::DailyLimitExhausted` | yours, from the configured bucket | **seconds** — at `per_day: 4_900`, 17.6s, the time for one token to accrue |
+| `Throttle::Timeout` | yours, per-minute bucket | seconds |
+
+The throttle's day bucket trickles rather than resetting on a boundary, so
+`DailyLimitExhausted#retry_after` is the wait for a *single* token, not the
+wait until your daily allowance renews. It's enough to resume, not enough to
+finish — which is exactly why the job should re-enqueue rather than sleep.
+If your UI shows a countdown, showing 17 seconds when the sync has hundreds
+of calls left to make will read as broken.
 
 `XeroKiwi::Throttle::Timeout` carries `tenant_id` and `retry_after` too, if
 you want to treat a per-minute wait that exceeded `max_wait` as a back-off

@@ -117,9 +117,34 @@ Pick values *below* Xero's defaults:
 | 5,000 calls/day per tenant | `per_day: 4,700` – `4,900` |
 
 The exact number depends on how much you care about the occasional 429 vs.
-maximising throughput. If your job batches run for hours, lean conservative —
-the daily limit resets on Xero's clock, not yours, and the first few
-minutes after "daily reset" can be ambiguous.
+maximising throughput.
+
+### What the numbers actually guarantee
+
+This is a token bucket, so your configured value is **two things at once**:
+the bucket's capacity, and its refill rate. A fresh bucket starts full, so
+over the *first* window you can spend the full capacity **and** everything
+that refills during it — close to double.
+
+Measured, from a fresh bucket:
+
+| Setting | Calls in the first 60s | Sustained after that |
+|---|---|---|
+| `per_minute: 55` | 109 | 55/min |
+| `per_minute: 10` | 19 | 10/min |
+| `per_minute: 5` | 9 | 5/min |
+
+So `per_minute: 55` is not a promise that you will never exceed 60 in a
+minute — a cold start can reach 109, and Xero will 429 some of those. The
+reactive retry layer is what catches them; that's why both layers exist and
+neither replaces the other.
+
+Steady state is what the setting really controls, and there it converges on
+exactly the value you configured. If you need a hard ceiling within any
+single 60-second window, halve it: `per_minute: 30` keeps even a cold-start
+burst under Xero's 60.
+
+The same applies to `per_day`, on a 24-hour scale.
 
 ## Per-minute vs per-day failure modes
 
@@ -133,18 +158,31 @@ probably too many concurrent workers for the configured `per_minute`.
 
 **Per-day:** the limiter raises `XeroKiwi::Throttle::DailyLimitExhausted`
 immediately, with `retry_after` in seconds and the `tenant_id` it relates to.
-Sleeping for hours is never the right move in a Sidekiq worker, so the caller
-has to decide:
+
+`retry_after` here is **seconds, not hours**. The day bucket trickles like
+the minute one rather than resetting on a boundary, so at `per_day: 4_900` a
+token accrues every 17.6 seconds and that is what you get back. There is no
+reset in the arithmetic.
+
+Re-enqueueing rather than blocking is still right, but for a different
+reason than the wait length. A sync needing several hundred more calls would
+wait 17.6s for *each* of them — short individually, hours in aggregate. That
+is the thing a worker should not sit through.
 
 ```ruby
 begin
   client.invoices(tenant_id)
 rescue XeroKiwi::Throttle::DailyLimitExhausted => e
-  # Re-enqueue the job for tomorrow. `retry_after` is seconds until the
-  # bucket has at least one token.
+  # `retry_after` is seconds until the bucket has one token — enough to
+  # resume, not enough to finish. Re-enqueue rather than sleep.
   MyJob.perform_in(e.retry_after, org_id)
 end
 ```
+
+Don't conflate this with Xero's own `Retry-After` on a daily 429. That one
+reflects Xero's limit rather than your configured one and can be genuinely
+long. The two are orders of magnitude apart, so anything recording a durable
+back-off should keep them distinguishable — tag the source.
 
 Both throttle exceptions carry `tenant_id` and `retry_after`, which mirrors
 the `XeroKiwi::RateLimitError` shape the retry layer raises after exhausting

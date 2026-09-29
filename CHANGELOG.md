@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-29
+
 ### Added
 
 - `Accounting::CreditNote` now models `payments`, which `Prepayment` and `Overpayment` both already did. Found by the asymmetry rather than by any payload comparison — four sibling resources, one missing a field, visible from the class definitions alone. The recorded `credit_notes/list` response carries `Payments` on all seventeen records, with data on two.

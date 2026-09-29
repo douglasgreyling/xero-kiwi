@@ -40,6 +40,22 @@
 
 ### Added
 
+- **`XeroKiwi::OAuth#client_credentials_token`** — Xero's non-tenanted `client_credentials` grant, authenticating the application rather than a user.
+
+  ```ruby
+  token  = oauth.client_credentials_token(scopes: "app.connections")
+  client = XeroKiwi::Client.new(access_token: token.access_token)
+  client.connections
+  ```
+
+  It is for the calls that belong to the app rather than to a connection — `connections` and `delete_connection`, both already non-tenanted — in the case where **no user token is available**: tearing down an organisation, or reassigning which user owns a sync. Without it, a consumer managing connections has to hand-roll the same POST, which is what prompted this: one had ported everything off its legacy client except this single grant, and was keeping the old client alive to serve it.
+
+  `redirect_uri` is not required. `scopes:` takes a String or an Array, joined the way `authorization_url` joins them, and is omitted from the request entirely when nil so Xero assigns the app's own scopes.
+
+  **The token cannot be refreshed.** Xero issues none for this grant, so `token.refreshable?` is false and a `Client` holding one raises `AuthenticationError` on expiry rather than attempting a renewal that cannot succeed — `Client#can_refresh?` already required a refresh token, so no change was needed there. Renewal is calling this again, which costs one request and needs no stored state.
+
+  Failures raise `XeroKiwi::OAuth::ClientCredentialsError`, which subclasses `AuthenticationError` so existing rescues still catch it.
+
 - `Accounting::Organisation` now models `tax_number_name`, which names what the organisation's locale calls its tax number (`"VAT Number"` on the recorded tenant). Present and populated in the recording, previously reachable only through `raw`.
 
 - Fields Xero's spec documents and the recordings confirm on every record, all previously reachable only through `raw`: `Invoice#is_discounted`, `Invoice#has_errors`, `CreditNote#has_errors`, `CreditNote#invoice_addresses`, `Contact#has_validation_errors`, `Payment#has_validation_errors`, `ContactGroup#has_validation_errors`, and `Prepayment#branding_theme_id`.

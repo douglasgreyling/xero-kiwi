@@ -16,6 +16,34 @@ RSpec.describe XeroKiwi::Client do
   let(:json_headers)         { { "Content-Type" => "application/json" } }
   let(:connections_endpoint) { "https://api.xero.com/connections" }
 
+  # Connection management is the one thing an app does without a user, using
+  # a client-credentials token. That token carries no refresh token, so the
+  # auto-refresh paths must stay out of the way rather than attempt a
+  # renewal that cannot succeed.
+  describe "with a client-credentials token" do
+    let(:app_client) do
+      described_class.new(access_token: "app_token", client_id: "id", client_secret: "secret")
+    end
+
+    it "sends it as a bearer token like any other" do
+      stub = stub_request(:get, connections_endpoint)
+             .with(headers: { "Authorization" => "Bearer app_token" })
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections
+
+      expect(stub).to have_been_requested
+    end
+
+    it "raises on expiry rather than trying to refresh what cannot be refreshed" do
+      stub = stub_request(:get, connections_endpoint)
+             .to_return(status: 401, body: JSON.dump("error" => "invalid_token"), headers: json_headers)
+
+      expect { app_client.connections }.to raise_error(XeroKiwi::AuthenticationError)
+      expect(stub).to have_been_requested.once
+    end
+  end
+
   describe "#connections" do
     context "when talking to the live Xero API", vcr: { cassette_name: "connections/list" } do
       it "returns parsed XeroKiwi::Connection objects" do

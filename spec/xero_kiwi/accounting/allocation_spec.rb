@@ -45,23 +45,43 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
     end
   end
 
-  describe "#amount" do
-    it "aliases applied_amount" do
-      expect(described_class.new(full_attrs).amount).to eq("553.15")
+  # Xero sends the allocated value under "Amount" in JSON and
+  # "AppliedAmount" in XML. This client is JSON-only, but the distinction has
+  # been got wrong twice in opposite directions — each time producing a
+  # silent nil that an importer turned into a zero — so both keys are read
+  # and both readers resolve.
+  describe "the allocated value" do
+    let(:json_shaped) { { "AllocationID" => "abc", "Amount" => 521.23 } }
+    let(:xml_shaped)  { { "AllocationID" => "abc", "AppliedAmount" => "553.15" } }
+
+    it "reads Xero's JSON key", :aggregate_failures do
+      allocation = described_class.new(json_shaped)
+
+      expect(allocation.amount).to eq(521.23)
+      expect(allocation.applied_amount).to eq(521.23)
     end
 
-    # The bug this replaced: mapping `amount` to "Amount" meant every
-    # allocation the gem could produce returned nil, so
-    # `allocations.map(&:amount)` yielded an array of nils rather than
-    # raising. A caller importing that would have written zeroes.
-    it "is not nil for a response-shaped payload" do
-      expect(described_class.new(full_attrs).amount).not_to be_nil
+    it "reads Xero's XML key", :aggregate_failures do
+      allocation = described_class.new(xml_shaped)
+
+      expect(allocation.applied_amount).to eq("553.15")
+      expect(allocation.amount).to eq("553.15")
     end
 
-    # Documents the direction: "Amount" is the request key, so a payload
-    # carrying only it is not something Xero ever returns here.
-    it "is nil when only the request-shaped Amount key is present" do
-      expect(described_class.new({ "AllocationID" => "abc", "Amount" => "100.00" }).amount).to be_nil
+    it "is nil only when neither key is present", :aggregate_failures do
+      allocation = described_class.new({ "AllocationID" => "abc" })
+
+      expect(allocation.amount).to be_nil
+      expect(allocation.applied_amount).to be_nil
+    end
+
+    # The failure mode both regressions shared: a nil that an importer
+    # coerces to 0.0 and stores, with nothing raising anywhere.
+    it "never leaves one reader nil while the other has a value" do
+      [json_shaped, xml_shaped].each do |attrs|
+        allocation = described_class.new(attrs)
+        expect([allocation.amount, allocation.applied_amount]).to all(be_truthy)
+      end
     end
   end
 
@@ -74,10 +94,11 @@ RSpec.describe XeroKiwi::Accounting::Allocation do
       expect(hash.keys).to match_array(described_class.attributes.keys)
     end
 
-    # amount is a plain reader, not a declared attribute, so it stays out of
-    # the projection — one value, one key.
-    it "does not carry an amount key" do
-      expect(described_class.new(full_attrs).to_h).not_to have_key(:amount)
+    # Both keys are declared attributes and both readers resolve, so the
+    # projection reports the value twice. `raw` is where you look to see
+    # which key Xero actually sent.
+    it "reports the allocated value under both keys" do
+      expect(described_class.new(full_attrs).to_h).to include(amount: "553.15", applied_amount: "553.15")
     end
   end
 

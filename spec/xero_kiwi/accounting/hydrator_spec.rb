@@ -29,8 +29,36 @@ RSpec.describe XeroKiwi::Accounting::Hydrator do
       end
     end
 
+    # Xero sends "" for a text field with no value, where its XML
+    # representation produced nil. Left as "", it reaches a database column
+    # and changes what queries match — a `where.not(logo_url: nil)` starts
+    # returning rows with no logo.
+    context "with an empty string" do
+      it "reads as nil on text types" do
+        %i[string enum guid].each do |type|
+          expect(described_class.call("", { type: type })).to be_nil
+        end
+      end
+
+      # Trimming " " would be editorialising on a value rather than
+      # recognising an absent one.
+      it "leaves whitespace alone" do
+        expect(described_class.call(" ", { type: :string })).to eq(" ")
+      end
+
+      # Untouched for now: no evidence Xero sends "" for a numeric field,
+      # and "".to_f is 0.0, so this would want its own decision.
+      it "leaves decimals alone" do
+        expect(described_class.call("", { type: :decimal })).to eq("")
+      end
+
+      it "does not disturb ordinary values" do
+        expect(described_class.call("Maple Florists", { type: :string })).to eq("Maple Florists")
+      end
+    end
+
     context "with pass-through types" do
-      it "returns raw for :string, :enum, :guid, :bool, :decimal" do
+      it "returns a non-empty raw value unchanged for :string, :enum, :guid, :bool, :decimal" do
         %i[string enum guid bool decimal].each do |type|
           expect(described_class.call("abc", { type: type })).to eq("abc")
         end

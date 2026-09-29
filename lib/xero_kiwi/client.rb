@@ -935,16 +935,32 @@ module XeroKiwi
 
         @store.record(
           tenant_id,
-          day:        to_i_or_nil(headers["X-DayLimit-Remaining"]),
-          minute:     to_i_or_nil(headers["X-MinLimit-Remaining"]),
-          app_minute: to_i_or_nil(headers["X-AppMinLimit-Remaining"])
+          day:        header_int(headers, "X-DayLimit-Remaining"),
+          minute:     header_int(headers, "X-MinLimit-Remaining"),
+          app_minute: header_int(headers, "X-AppMinLimit-Remaining")
         )
       end
 
       private
 
-      def to_i_or_nil(value)
+      # Faraday's own header container is case-insensitive, so a direct
+      # lookup is right in production. It is not right everywhere: a plain
+      # Hash is case-sensitive, and Xero's headers come back cased
+      # differently depending on who recorded them — a VCR cassette holds
+      # `X-Daylimit-Remaining`, not `X-DayLimit-Remaining`. Missing them
+      # would record nothing, and `day_below?` answers false when nothing is
+      # known, so the failure is a quota check that silently measures
+      # nothing. Scan on miss rather than rely on the container's manners.
+      def header_int(headers, name)
+        value = headers[name]
+        value = scan_for(headers, name) if value.nil?
+
         value.nil? || value.to_s.empty? ? nil : value.to_i
+      end
+
+      def scan_for(headers, name)
+        key = headers.keys.find { |candidate| candidate.to_s.casecmp?(name) }
+        key && headers[key]
       end
     end
 

@@ -113,6 +113,22 @@ Depend on these; they won't change without a major version.
 The one thing deliberately *not* guaranteed is the presence of `raw` on
 nested objects, per the bullet above.
 
+**This is where `raw` and the typed attributes differ on purpose.** Xero
+sends `""` for a text field with no value; the modelled attribute reads it
+as `nil`, while `raw` keeps the `""` exactly as it arrived:
+
+```ruby
+theme.logo_url        # => nil
+theme.raw["LogoUrl"]  # => ""
+```
+
+That empty string is otherwise easy to carry into a database column, where
+it quietly changes what queries match — a `where.not(logo_url: nil)` starts
+returning rows with no logo. `type: :date` has always made this call;
+strings doing otherwise was an inconsistency. Only exactly `""` is
+affected: `" "` is left alone, because trimming it would be editorialising
+on a value rather than recognising an absent one.
+
 ### Why nested objects don't carry raw
 
 Two reasons, both worth knowing if you're tempted to ask for it.
@@ -148,6 +164,18 @@ contact with one person parses to a Hash and a contact with two parses to
 an Array, from the same endpoint. Code written against that has a
 normalising step somewhere, whether or not its author knew why.
 
+**Key names can differ too, not only nesting.** It is tempting to assume the
+two representations agree on field names and diverge only in structure. They
+don't. An allocation's value is `Amount` in JSON and `AppliedAmount` in XML —
+same field, same record, different name — and nothing in Xero's
+documentation says so. Two separate silent-nil bugs in this gem came from
+assuming otherwise, each one an importer writing `0.0` into every allocated
+amount with nothing raising.
+
+So when you check a field against stored XML-era payloads, you are checking
+its name as well as its shape. If a modelled attribute comes back nil
+against real JSON, suspect the key before suspecting the data.
+
 No client setting reproduces these shapes — they're artefacts of an XML
 parse kiwi doesn't do. But the remedy isn't the same everywhere, and it's
 worth sorting your readers into two piles before planning the work.
@@ -166,10 +194,26 @@ reads are the same in both representations, only the *writer* changes:
 stop unwrapping, store the array. Existing rows stay readable, and you
 skip a migration entirely.
 
-Type coercion is usually fine in that second pile too. XML gives you
-strings — `"false"` rather than `false` — and if the reader hands that to
-something like ActiveModel's boolean cast, both the old string and the new
-real boolean land on the same value.
+**Types change too, and booleans are where it bites.** XML has no types, so
+everything arrives as a string: `"false"`, not `false`. JSON gives you the
+real thing. If your reader passes the value through a caster —
+ActiveModel's boolean cast, say — both land on the same result and you'll
+never notice. If it relies on plain Ruby truthiness, the two are opposites:
+
+```ruby
+"false" ? :yes : :no   # => :yes   ← every non-empty string is truthy
+false   ? :yes : :no   # => :no
+```
+
+A reader doing `select(&:included)` over an XML-derived `"false"` has been
+selecting the records it was meant to exclude, for as long as that code has
+existed. Moving to kiwi *fixes* it — which means the behaviour changes at
+cutover, in a way your users may see. Find those readers before you switch,
+not after: grep for boolean-ish fields consumed without a cast.
+
+This is the third axis on which the two representations differ, after
+nesting and key names. Treat "it's the same field, so it's the same value"
+as the assumption to check rather than the one to rely on.
 
 One piece of luck worth knowing about: the two piles tend to fail
 differently. A `dig` that misses returns nil and writes a blank record

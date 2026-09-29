@@ -28,10 +28,25 @@ module XeroKiwi
       end
     end
 
-    # Raised immediately (no sleep) when the per-day bucket is exhausted. The
-    # wait until reset is typically measured in hours, so blocking the caller
-    # is the wrong move — re-enqueue the job at `retry_after` instead. Shape
-    # mirrors RateLimitError so existing Xero rate-limit handling applies.
+    # Raised immediately (no sleep) when the per-day bucket is exhausted.
+    #
+    # `retry_after` is the wait for ONE token, and it is seconds, not hours —
+    # the day bucket trickles like the minute bucket rather than resetting on
+    # a boundary. At `per_day: 4_900` a token accrues every 17.6s
+    # (86_400_000ms / 4_900). There is no reset in the arithmetic.
+    #
+    # Re-enqueueing rather than blocking is still the right move, but for a
+    # different reason than the wait length: a sync needing several hundred
+    # more calls would sleep 17.6s for each of them, which is hours in
+    # aggregate even though each individual wait is short.
+    #
+    # Do not conflate this with Xero's own `Retry-After` on a daily 429,
+    # which reflects Xero's limit rather than your configured one and can be
+    # genuinely long. Anything recording a durable back-off should keep the
+    # two distinguishable — see docs/retries-and-rate-limits.md.
+    #
+    # Shape mirrors RateLimitError so existing Xero rate-limit handling
+    # applies.
     class DailyLimitExhausted < Error
       attr_reader :retry_after, :tenant_id
 

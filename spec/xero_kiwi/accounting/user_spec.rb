@@ -4,6 +4,7 @@ RSpec.describe XeroKiwi::Accounting::User do
   let(:full_attrs) do
     {
       "UserID"           => "7cf47fe2-c3dd-4c6b-9895-7ba767ba529c",
+      "GlobalUserID"     => "48345799-f95d-40af-9a0d-5847bfad7f8d",
       "EmailAddress"     => "john.smith@mail.com",
       "FirstName"        => "John",
       "LastName"         => "Smith",
@@ -11,6 +12,24 @@ RSpec.describe XeroKiwi::Accounting::User do
       "IsSubscriber"     => false,
       "OrganisationRole" => "ADMIN"
     }
+  end
+
+  # Xero returns two identifiers that differ for every user. A consumer keyed
+  # its membership records on user_id while its own user table used
+  # GlobalUserID, so every membership pointed at an id no user row carried —
+  # the association came back empty with the right count and the right roles.
+  describe "the two identifiers" do
+    subject(:user) { described_class.new(full_attrs) }
+
+    it "exposes both, distinctly", :aggregate_failures do
+      expect(user.user_id).to eq("7cf47fe2-c3dd-4c6b-9895-7ba767ba529c")
+      expect(user.global_user_id).to eq("48345799-f95d-40af-9a0d-5847bfad7f8d")
+      expect(user.user_id).not_to eq(user.global_user_id)
+    end
+
+    it "leaves global_user_id nil when Xero omits it" do
+      expect(described_class.new(full_attrs.except("GlobalUserID")).global_user_id).to be_nil
+    end
   end
 
   describe ".from_response" do

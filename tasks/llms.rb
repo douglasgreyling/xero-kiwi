@@ -89,7 +89,8 @@ module Llms
                "and the throttle errors, tuning the retry policy, the Faraday middleware ordering, why 500 is deliberately not retried",
       optional: true },
     { path: "docs/throttling.md", title: "Throttling",
-      summary: "the Redis-backed per-tenant token bucket for coordinating rate limits across processes, `default_throttle`, " \
+      summary: "the Redis-backed per-tenant token bucket for coordinating rate limits across processes, `default_throttle`, what " \
+               "per_minute/per_day actually guarantee (a fresh bucket bursts to roughly double in the first window), " \
                "`#remaining`, fail-open behaviour, writing a custom limiter",
       optional: true },
     { path: "CHANGELOG.md", title: "CHANGELOG",

@@ -1,5 +1,42 @@
 ## [Unreleased]
 
+### Breaking
+
+- **Empty strings from Xero now read as `nil` on modelled attributes.** Xero sends `""` for a text field with no value, where its XML representation produced `nil`. Left as `""` it reaches a database column and quietly changes what queries match — a consumer's `where.not(xero_logo_url: nil)` started matching themes with no logo, and was one step from putting a blank image into customer statements.
+
+  Applies to `:string`, `:enum` and `:guid` attributes. `:date` has always behaved this way, so strings doing otherwise was an inconsistency rather than a principle. `:bool` and `:decimal` are untouched — there is no evidence Xero sends `""` for a numeric field, and that would want its own decision.
+
+  Only exactly `""` is affected. `" "` is left alone, because trimming it would be editorialising on a value rather than recognising an absent one. **`raw` is untouched** and still holds `""` verbatim, so the original payload is always recoverable.
+
+  Upgrading: code that chains off a string attribute without a guard (`contact.email_address.downcase`) will now raise `NoMethodError` where it silently operated on `""`. That is the intended trade — silent is the failure mode this release exists to remove.
+
+  Where to actually look: **optional text fields** — references, logo URLs, email addresses, invoice numbers — since those are the ones Xero leaves empty. Enums and IDs are effectively unaffected in practice because Xero always populates them, and code reading those tends to fail loudly either way (`hash.fetch("".downcase)` already raised `KeyError`; it now raises `NoMethodError` and loses the field name from the message). One consumer measured 14 unguarded `.downcase` calls against this change and needed no code changes at all.
+
+### Fixed
+
+- `RateLimitCapture` now finds Xero's quota headers whatever case they arrive in. Faraday's own header container is case-insensitive so production was never affected, but a plain Hash is not, and Xero's headers are cased differently depending on who recorded them — a VCR cassette holds `X-Daylimit-Remaining`, not `X-DayLimit-Remaining`. Missing them records nothing, and `day_below?` answers false when nothing is known, so the failure would have been a quota check that passes while measuring nothing. Spotted by a consumer reading their own recorded cassettes against the lookup.
+
+- **`Allocation#applied_amount` was nil for every allocation — 0.6.0 fixed the name and kept the bug.** Xero sends the allocated value under `"Amount"` in JSON and `"AppliedAmount"` in XML. 0.6.0 concluded the opposite, from payloads a legacy XML client had stored, and remapped the attribute to a key this JSON-only client never receives. Before 0.6.0 the mapping was right. Measured on a live tenant: 24 of 24 allocations carry `Amount`, none carry `AppliedAmount`, on both the list and single-resource endpoints.
+
+  Both keys are now modelled and **both `#amount` and `#applied_amount` resolve to whichever one arrived**, so neither can be nil while the other holds a value. This has been got wrong twice in opposite directions, each time producing a nil that an importer coerced to `0.0` and stored with nothing raising; reading both is cheaper than being certain. `to_h` reports the value under both keys, and `raw` still shows which key Xero sent.
+
+### Added
+
+- `Accounting::User` now models **`global_user_id`** (`GlobalUserID`). Xero returns two identifiers that differ for every user: `user_id` is scoped to the organisation, `global_user_id` identifies the person across all of them and is what an OIDC `id_token` subject corresponds to. A consumer keyed membership records on `user_id` while its own user table used `GlobalUserID`, so every membership pointed at an identifier no user row carried — the association came back empty, silently, with the right count and the right roles.
+
+- `Accounting::TrackingOption` now models the four booleans Xero returns alongside `Status`: `is_active`, `is_archived`, `is_deleted` and `has_validation_errors`. Confirmed against a live `GET /TrackingCategories` response — every key the endpoint returns on an option is now modelled. `#active?` still reads `status`, because the two agree on an active option and whether they diverge on an archived one is unconfirmed; `is_archived` and `is_deleted` are the ones to read when you need to tell those apart, since `status` collapses both into `"DELETED"`.
+
+### Documentation
+
+- **Corrected what `Throttle::DailyLimitExhausted#retry_after` actually means.** Its docstring said the wait was "typically measured in hours" and described a reset boundary. The day bucket trickles like the minute bucket — `capacity / window_ms` per millisecond — so at `per_day: 4_900` a token accrues every 17.6 seconds, and that is what `retry_after` returns. There is no reset in the arithmetic. Reported by a consumer who read the comment, believed the wait would be hours, and designed an hourly sweep around it before measuring.
+
+  Re-enqueueing rather than blocking is still correct, but for a different reason than the docstring gave: a sync needing several hundred more calls waits 17.6s for each of them, which is hours in aggregate even though each wait is short.
+
+- **Documented what `per_minute` and `per_day` actually guarantee.** A token bucket's configured value is both its capacity and its refill rate, and a fresh bucket starts full — so the first window can spend the capacity *and* everything refilling during it. Measured: `per_minute: 55` allows **109 calls in the first 60 seconds**, not 55. The `Choosing limits` table recommends exactly that value as headroom under Xero's 60, which it is not at a cold start; steady state does converge on the configured rate. Halve the value if you need a hard ceiling in any single window. Both behaviours now have specs so a future change is deliberate.
+
+- Noted that the two `retry_after` sources are orders of magnitude apart — Xero's reported wait on a daily 429 can be long, while `DailyLimitExhausted` is always seconds — and that anything recording a durable back-off should tag which one it came from.
+- Strengthened the XML-migration guidance in `docs/client.md` to cover **type** divergence, which it previously called "usually fine". XML has no types, so a boolean arrives as the string `"false"` — truthy in Ruby — while JSON sends a real `false`. A reader using plain truthiness rather than a cast has been doing the opposite of what it reads as, and moving to kiwi silently reverses it at cutover. Reported by a consumer who found years of statements going to contact people explicitly marked not to receive them. That is now the third documented axis of divergence, after nesting and key names.
+
 ## [0.7.0] - 2026-09-27
 
 ### Added

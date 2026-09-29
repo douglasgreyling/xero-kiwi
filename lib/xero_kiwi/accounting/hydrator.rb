@@ -20,23 +20,39 @@ module XeroKiwi
     module Hydrator
       module_function
 
-      def call(raw, spec) # rubocop:disable Metrics/AbcSize,Metrics/CyclomaticComplexity
+      def call(raw, spec)
         return spec[:hydrate].call(raw) if spec[:hydrate]
         return [] if spec[:type] == :collection && raw.nil?
         return nil if raw.nil?
 
+        hydrate_typed(raw, spec)
+      end
+
+      def hydrate_typed(raw, spec)
         case spec[:type]
-        when :string, :enum, :guid, :bool, :decimal
-          raw
-        when :date
-          parse_time(raw)
-        when :object
-          build_object(raw, spec)
-        when :collection
-          raw.map { |item| build_object(item, spec) }
-        else
-          raise ArgumentError, "unknown attribute type: #{spec[:type].inspect}"
+        when :string, :enum, :guid then blank_to_nil(raw)
+        when :bool, :decimal       then raw
+        when :date                 then parse_time(raw)
+        when :object               then build_object(raw, spec)
+        when :collection           then raw.map { |item| build_object(item, spec) }
+        else raise ArgumentError, "unknown attribute type: #{spec[:type].inspect}"
         end
+      end
+
+      # Xero sends "" for a text field that has no value, where its XML
+      # representation produced nil. Left alone, that empty string reaches a
+      # database column and quietly changes what queries match — a
+      # `where.not(logo_url: nil)` starts returning rows with no logo.
+      #
+      # Only exactly "" becomes nil. Whitespace is left alone: " " may be
+      # deliberate, and trimming it would be editorialising on a value
+      # rather than recognising an absent one. `raw` is untouched either
+      # way, so the original payload is always recoverable.
+      #
+      # `:date` has always done this (see parse_time); strings behaving
+      # differently was an inconsistency, not a principle.
+      def blank_to_nil(value)
+        value == "" ? nil : value
       end
 
       # Xero uses two timestamp formats depending on the endpoint:

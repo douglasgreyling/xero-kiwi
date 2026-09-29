@@ -40,7 +40,8 @@ Xero returns:
 
 | Attribute | Type | What it is |
 |-----------|------|------------|
-| `user_id` | `String` | The unique Xero identifier for the user. |
+| `user_id` | `String` | Xero's identifier for the user **within this organisation**. |
+| `global_user_id` | `String` | Xero's identifier for the person **across all organisations**. Differs from `user_id`, and is what an OIDC `id_token` subject corresponds to. |
 | `email_address` | `String` | The user's email address. |
 | `first_name` | `String` | The user's first name. |
 | `last_name` | `String` | The user's last name. |

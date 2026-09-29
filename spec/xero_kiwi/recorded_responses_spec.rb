@@ -97,6 +97,67 @@ RSpec.describe "recorded Xero responses" do # rubocop:disable RSpec/DescribeClas
     end
   end
 
+  # Xero nests *allocation stubs* under an invoice, not whole documents:
+  # `AppliedAmount` is what was applied to this invoice, `Total` is the
+  # credit note's own total. Modelling the stub as a plain reference left
+  # `AppliedAmount` unreachable, so the nearest-looking reader was `total` —
+  # a different number on 19 of the 24 stubs in this recording.
+  describe "invoice allocation stubs", vcr: { cassette_name: "invoices/list", record: :none } do
+    subject(:invoices) { client.invoices(tenant_id) }
+
+    %i[credit_notes prepayments overpayments].each do |association|
+      it "expose the amount applied to this invoice, on invoice.#{association}" do
+        stubs = invoices.flat_map(&association)
+
+        expect(stubs.map(&:applied_amount)).to all(be_a(BigDecimal))
+      end
+    end
+
+    it "does not conflate the applied amount with the document total" do
+      stubs = invoices.flat_map(&:credit_notes)
+
+      expect(stubs.reject { |s| s.applied_amount == s.total }).not_to be_empty
+    end
+  end
+
+  # The same attribute on a full document, where Xero sends no such key.
+  describe "credit notes fetched in their own right", vcr: { cassette_name: "credit_notes/list", record: :none } do
+    it "carry no applied amount, since nothing was applied to anything" do
+      expect(client.credit_notes(tenant_id).map(&:applied_amount)).to all(be_nil)
+    end
+  end
+
+  # Floats cannot represent most decimal fractions, so arithmetic between two
+  # money fields drifts while each one still prints correctly. This identity
+  # failed on 3 of these 55 invoices before money became BigDecimal.
+  describe "money", vcr: { cassette_name: "invoices/list", record: :none } do
+    subject(:invoices) do
+      client.invoices(tenant_id).reject { |i| i.sub_total.nil? || i.total_tax.nil? || i.total.nil? }
+    end
+
+    it "arrives as BigDecimal rather than Float" do
+      expect(invoices.map { |i| i.total.class }.uniq).to eq([BigDecimal])
+    end
+
+    it "adds up: sub_total + total_tax == total, on every recorded invoice" do
+      mismatched = invoices.reject { |i| i.sub_total + i.total_tax == i.total }
+
+      expect(mismatched).to be_empty
+    end
+
+    it "holds the decimal Xero wrote, not a binary approximation of it" do
+      totals = invoices.map { |i| i.total.to_s("F") }
+
+      expect(totals).to all(match(/\A-?\d+\.\d{1,2}\z/))
+    end
+  end
+
+  describe "organisation", vcr: { cassette_name: "organisation/get", record: :none } do
+    it "names the kind of tax number it holds" do
+      expect(client.organisation(tenant_id).tax_number_name).to eq("VAT Number")
+    end
+  end
+
   describe "users", vcr: { cassette_name: "users/list", record: :none } do
     subject(:users) { client.users(tenant_id) }
 

@@ -24,6 +24,7 @@ module XeroKiwi
       attribute :registration_number,            xero: "RegistrationNumber"
       attribute :employer_identification_number, xero: "EmployerIdentificationNumber"
       attribute :tax_number,                     xero: "TaxNumber"
+      attribute :tax_number_name,                xero: "TaxNumberName"
       attribute :financial_year_end_day,         xero: "FinancialYearEndDay"
       attribute :financial_year_end_month,       xero: "FinancialYearEndMonth"
       attribute :sales_tax_basis,                xero: "SalesTaxBasis"

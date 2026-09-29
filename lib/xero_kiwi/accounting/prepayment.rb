@@ -25,6 +25,7 @@ module XeroKiwi
       attribute :currency_code,      xero: "CurrencyCode"
       attribute :currency_rate,      xero: "CurrencyRate", type: :decimal
       attribute :invoice_number,     xero: "InvoiceNumber"
+      attribute :reference,          xero: "Reference"
       attribute :remaining_credit,   xero: "RemainingCredit",  type: :decimal
       attribute :allocations,        xero: "Allocations",      type: :collection, of: "Allocation"
       attribute :payments,           xero: "Payments",         type: :collection, of: "Payment", reference: true

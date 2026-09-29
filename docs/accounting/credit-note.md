@@ -62,6 +62,7 @@ fields Xero returns:
 | `sent_to_contact` | `Boolean` | Whether the credit note has been sent to the contact. |
 | `remaining_credit` | `Numeric` | The remaining credit balance. |
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
+| `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references), as on prepayments and overpayments. See [Payments](payment.md). |
 | `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
 | `has_attachments` | `Boolean` | Whether the credit note has attachments. |
 

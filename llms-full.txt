@@ -92,6 +92,10 @@ below.
 | [Prepayments](docs/accounting/prepayment.md) | Listing and fetching prepayments, the `XeroKiwi::Accounting::Prepayment` resource, LineItem |
 | [Branding Themes](docs/accounting/branding-theme.md) | Listing and fetching branding themes, the `XeroKiwi::Accounting::BrandingTheme` resource |
 | [Tracking Categories](docs/accounting/tracking-category.md) | Listing and fetching tracking categories, the `TrackingCategory` / `TrackingOption` / `Tracking` resources |
+| [Address](docs/accounting/address.md) | The `XeroKiwi::Accounting::Address` value object, nested on Organisation and Contact |
+| [Phone](docs/accounting/phone.md) | The `XeroKiwi::Accounting::Phone` value object, nested on Organisation and Contact |
+| [ExternalLink](docs/accounting/external-link.md) | The `XeroKiwi::Accounting::ExternalLink` value object |
+| [PaymentTerms](docs/accounting/payment-terms.md) | The `XeroKiwi::Accounting::PaymentTerms` and `PaymentTerm` value objects |
 | [Tokens](docs/tokens.md) | The `XeroKiwi::Token` value object, automatic refresh, revocation, persistence callbacks |
 | [OAuth](docs/oauth.md) | Authorization URL building, code exchange, PKCE, ID token verification, full Rails-style example |
 | [Errors](docs/errors.md) | The error hierarchy, what to catch and when |

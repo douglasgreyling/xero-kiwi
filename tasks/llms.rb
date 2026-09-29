@@ -181,6 +181,21 @@ module Llms
     on_disk.sort - DOCS.map { |d| d[:path] }
   end
 
+  # The README's documentation table is a third index alongside llms.txt and
+  # llms-full.txt, and it drifts the same way: four value-object docs were
+  # listed in the manifest and reachable from llms.txt while being invisible
+  # to anyone reading the README.
+  #
+  # Only presence is checked, not wording. The README is written for people
+  # and the manifest summaries for machines, so they should be allowed to
+  # differ — what must not differ is which docs exist.
+  def unlinked_from_readme
+    readme = File.read("README.md", encoding: "UTF-8")
+    linked = readme.scan(%r{\]\(((?:docs/|CHANGELOG)[^)#]*)\)}).flatten.uniq
+
+    DOCS.map { |d| d[:path] }.reject { |path| path == "README.md" } - linked
+  end
+
   def outputs
     { INDEX_PATH => build_index, FULL_PATH => build_full }
   end

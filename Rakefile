@@ -30,6 +30,14 @@ namespace :llms do
       exit 1
     end
 
+    unlinked = Llms.unlinked_from_readme
+    unless unlinked.empty?
+      warn "✗ These docs are in the manifest but not linked from the README's documentation table:"
+      unlinked.each { |path| warn "    #{path}" }
+      warn "  Add a row for each, or remove them from Llms::DOCS."
+      exit 1
+    end
+
     stale = Llms.outputs.reject do |path, expected|
       File.exist?(path) && File.read(path, encoding: "UTF-8") == expected
     end

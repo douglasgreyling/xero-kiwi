@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Added
+
+- `Accounting::TrackingOption` now models the four booleans Xero returns alongside `Status`: `is_active`, `is_archived`, `is_deleted` and `has_validation_errors`. Confirmed against a live `GET /TrackingCategories` response — every key the endpoint returns on an option is now modelled. `#active?` still reads `status`, because the two agree on an active option and whether they diverge on an archived one is unconfirmed; `is_archived` and `is_deleted` are the ones to read when you need to tell those apart, since `status` collapses both into `"DELETED"`.
+
 ## [0.7.0] - 2026-09-27
 
 ### Added

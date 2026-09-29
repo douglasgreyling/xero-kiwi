@@ -85,6 +85,18 @@ RSpec.describe "recorded Xero responses" do # rubocop:disable RSpec/DescribeClas
     end
   end
 
+  # Found by asymmetry rather than by comparison: Prepayment and Overpayment
+  # both modelled `payments` and CreditNote did not, which is visible from
+  # the class definitions alone. The recording confirms Xero sends it on
+  # every credit note, with data on two of seventeen.
+  describe "credit note payments", vcr: { cassette_name: "credit_notes/list", record: :none } do
+    it "are modelled, as on the sibling resources" do
+      populated = client.credit_notes(tenant_id).map(&:payments).reject(&:empty?)
+
+      expect(populated).not_to be_empty
+    end
+  end
+
   describe "users", vcr: { cassette_name: "users/list", record: :none } do
     subject(:users) { client.users(tenant_id) }
 

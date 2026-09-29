@@ -58,7 +58,7 @@ fields Xero returns:
 | `currency_rate` | `String` | The currency rate (1.0 for base currency). |
 | `invoice_number` | `String` | The invoice number (for receive prepayments only). |
 | `remaining_credit` | `String` | The remaining credit balance. |
-| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, `applied_amount`, `date`, `is_deleted`, and an `invoice` reference. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |
 | `has_attachments` | `Boolean` | Whether the prepayment has attachments. |
 | `fully_paid_on_date` | `Time` | When the prepayment was fully allocated, parsed as UTC. |

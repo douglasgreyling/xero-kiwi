@@ -148,6 +148,18 @@ contact with one person parses to a Hash and a contact with two parses to
 an Array, from the same endpoint. Code written against that has a
 normalising step somewhere, whether or not its author knew why.
 
+**Key names can differ too, not only nesting.** It is tempting to assume the
+two representations agree on field names and diverge only in structure. They
+don't. An allocation's value is `Amount` in JSON and `AppliedAmount` in XML —
+same field, same record, different name — and nothing in Xero's
+documentation says so. Two separate silent-nil bugs in this gem came from
+assuming otherwise, each one an importer writing `0.0` into every allocated
+amount with nothing raising.
+
+So when you check a field against stored XML-era payloads, you are checking
+its name as well as its shape. If a modelled attribute comes back nil
+against real JSON, suspect the key before suspecting the data.
+
 No client setting reproduces these shapes — they're artefacts of an XML
 parse kiwi doesn't do. But the remedy isn't the same everywhere, and it's
 worth sorting your readers into two piles before planning the work.

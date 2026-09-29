@@ -61,7 +61,7 @@ fields Xero returns:
 | `reference` | `String` | Additional reference number (ACCRECCREDIT only). |
 | `sent_to_contact` | `Boolean` | Whether the credit note has been sent to the contact. |
 | `remaining_credit` | `Numeric` | The remaining credit balance. |
-| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, `applied_amount`, `date`, `is_deleted`, and an `invoice` reference. |
+| `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `branding_theme_id` | `String` | The branding theme ID applied to the credit note. |
 | `has_attachments` | `Boolean` | Whether the credit note has attachments. |
 
@@ -95,3 +95,25 @@ credit_notes = client.credit_notes(tenant_id)
 with_credit = credit_notes.select { |cn| cn.remaining_credit.to_f > 0 }
 with_credit.each { |cn| puts "#{cn.credit_note_number}: #{cn.remaining_credit} remaining" }
 ```
+
+## The allocated value: `amount` and `applied_amount`
+
+Xero sends the allocated value under **different keys in different
+representations**:
+
+| Representation | Key |
+|---|---|
+| JSON — what this client requests | `Amount` |
+| XML — what other Xero clients get | `AppliedAmount` |
+
+Kiwi models both and both readers resolve to whichever one arrived, so
+`allocation.amount` and `allocation.applied_amount` return the same value and
+neither is nil while the other holds one. `to_h` reports it under both keys;
+`raw` shows which key Xero actually sent.
+
+This is worth knowing if you are migrating from a client that spoke XML and
+have stored payloads: your old rows say `AppliedAmount` and Xero's JSON says
+`Amount`, for the same field on the same record. Key names do not reliably
+carry across the two representations — an assumption that has produced two
+separate silent-nil bugs here, each one an importer writing `0.0` into every
+allocated amount with nothing raising.

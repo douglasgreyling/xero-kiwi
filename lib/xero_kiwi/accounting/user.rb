@@ -11,7 +11,13 @@ module XeroKiwi
       payload_key "Users"
       identity    :user_id
 
-      attribute :user_id,           xero: "UserID", type: :guid
+      # Xero returns two distinct identifiers. UserID is scoped to the
+      # organisation; GlobalUserID identifies the person across every
+      # organisation they belong to, and is what an OIDC id_token subject
+      # corresponds to. They differ for every user — key membership records
+      # on the one your own user table uses.
+      attribute :user_id,           xero: "UserID",           type: :guid
+      attribute :global_user_id,    xero: "GlobalUserID",     type: :guid
       attribute :email_address,     xero: "EmailAddress",     query: true
       attribute :first_name,        xero: "FirstName",        query: true
       attribute :last_name,         xero: "LastName",         query: true

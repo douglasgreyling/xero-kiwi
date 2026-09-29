@@ -1,6 +1,14 @@
 ## [Unreleased]
 
+### Fixed
+
+- **`Allocation#applied_amount` was nil for every allocation — 0.6.0 fixed the name and kept the bug.** Xero sends the allocated value under `"Amount"` in JSON and `"AppliedAmount"` in XML. 0.6.0 concluded the opposite, from payloads a legacy XML client had stored, and remapped the attribute to a key this JSON-only client never receives. Before 0.6.0 the mapping was right. Measured on a live tenant: 24 of 24 allocations carry `Amount`, none carry `AppliedAmount`, on both the list and single-resource endpoints.
+
+  Both keys are now modelled and **both `#amount` and `#applied_amount` resolve to whichever one arrived**, so neither can be nil while the other holds a value. This has been got wrong twice in opposite directions, each time producing a nil that an importer coerced to `0.0` and stored with nothing raising; reading both is cheaper than being certain. `to_h` reports the value under both keys, and `raw` still shows which key Xero sent.
+
 ### Added
+
+- `Accounting::User` now models **`global_user_id`** (`GlobalUserID`). Xero returns two identifiers that differ for every user: `user_id` is scoped to the organisation, `global_user_id` identifies the person across all of them and is what an OIDC `id_token` subject corresponds to. A consumer keyed membership records on `user_id` while its own user table used `GlobalUserID`, so every membership pointed at an identifier no user row carried — the association came back empty, silently, with the right count and the right roles.
 
 - `Accounting::TrackingOption` now models the four booleans Xero returns alongside `Status`: `is_active`, `is_archived`, `is_deleted` and `has_validation_errors`. Confirmed against a live `GET /TrackingCategories` response — every key the endpoint returns on an option is now modelled. `#active?` still reads `status`, because the two agree on an active option and whether they diverge on an archived one is unconfirmed; `is_archived` and `is_deleted` are the ones to read when you need to tell those apart, since `status` collapses both into `"DELETED"`.
 

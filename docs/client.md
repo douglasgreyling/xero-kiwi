@@ -239,12 +239,33 @@ For migration this mostly helps. Comparison is not a concern —
 - **`to_s` gives `"0.1981297e5"`**, not `"19812.97"`. Use `to_s("F")` for a
   plain decimal string.
 - **`to_json` gives the string `"0.1981297e5"`**, where a Float gave the
-  number `19812.97`. If you write a money field into a `jsonb` column or an
-  API response, that is a visible change in the stored shape — from a JSON
-  number to a JSON string in scientific notation. Call `to_s("F")` or
-  `to_f` on the way in, depending on which you want.
+  number `19812.97`. Writing a **typed** money attribute into a `jsonb`
+  column or an API response changes the stored shape — from a JSON number
+  to a JSON string in scientific notation. Call `to_s("F")` or `to_f` on
+  the way in, depending on which you want.
+
+  **`raw` is not affected.** It holds Xero's parsed payload untouched, so a
+  money value in there is still a Float and still serialises as a JSON
+  number. A consumer whose `jsonb` columns are fed from `raw` sees no
+  change at all — that separation is the whole point of `raw`.
 
 `is_a?(Float)` is also now false, though `is_a?(Numeric)` still holds.
+
+**Check for `.to_f` on money you persist.** Converting back to Float
+immediately undoes this change, and does so silently: a `decimal(19,4)`
+column holds more precision than a Float can carry, so the round trip loses
+digits rather than raising.
+
+```ruby
+BigDecimal("1234567890123.4567").round(4)             # => 1234567890123.4567
+BigDecimal("1234567890123.4567").to_f.to_d.round(4)   # => 1234567890123.456
+BigDecimal("999999999999999.9999").to_f.to_d.round(4) # => 1000000000000000.0
+```
+
+Out of reach for currencies like GBP or ZAR at ordinary invoice sizes, not
+for IDR or VND. A `.to_f` left over from an XML-era client — where the value
+arrived as a String and had to be converted — is the likely place to find
+one.
 
 One piece of luck worth knowing about: the two piles tend to fail
 differently. A `dig` that misses returns nil and writes a blank record

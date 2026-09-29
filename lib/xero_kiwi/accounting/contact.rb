@@ -46,7 +46,7 @@ module XeroKiwi
       attribute :purchases_default_line_amount_type, xero: "PurchasesDefaultLineAmountType"
       attribute :tracking_category_name,             xero: "TrackingCategoryName"
       attribute :tracking_option_name,               xero: %w[TrackingCategoryOption TrackingOptionName]
-      attribute :payment_terms,                      xero: "PaymentTerms",                   hydrate: ->(raw) { PaymentTerms.from_hash(raw) }
+      attribute :payment_terms,                      xero: "PaymentTerms",                   hydrate: ->(raw) { PaymentTerms.from_hash(raw) }, of: "PaymentTerms"
       attribute :contact_groups,                     xero: "ContactGroups",                  type: :collection, of: "ContactGroup", reference: true
       attribute :website,                            xero: "Website"
       attribute :branding_theme,                     xero: "BrandingTheme", type: :object, of: "BrandingTheme"

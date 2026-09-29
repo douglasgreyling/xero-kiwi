@@ -43,7 +43,7 @@ module XeroKiwi
       attribute :addresses,                      xero: "Addresses",                    type: :collection, of: Address
       attribute :phones,                         xero: "Phones",                       type: :collection, of: Phone
       attribute :external_links,                 xero: "ExternalLinks",                type: :collection, of: ExternalLink
-      attribute :payment_terms,                  xero: "PaymentTerms",                 hydrate: ->(raw) { PaymentTerms.from_hash(raw) }
+      attribute :payment_terms,                  xero: "PaymentTerms",                 hydrate: ->(raw) { PaymentTerms.from_hash(raw) }, of: "PaymentTerms"
 
       # Xero's /Organisation endpoint returns a one-element "Organisations"
       # array — we unwrap it to a single object. `opts` stays positional to

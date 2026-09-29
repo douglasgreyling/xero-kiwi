@@ -13,8 +13,8 @@ module XeroKiwi
       # a PaymentTerm with every attribute nil.
       TERM_HYDRATOR = ->(raw) { raw.nil? || raw.empty? ? nil : PaymentTerm.new(raw) }
 
-      attribute :bills, xero: "Bills", hydrate: TERM_HYDRATOR
-      attribute :sales, xero: "Sales", hydrate: TERM_HYDRATOR
+      attribute :bills, xero: "Bills", hydrate: TERM_HYDRATOR, of: "PaymentTerm"
+      attribute :sales, xero: "Sales", hydrate: TERM_HYDRATOR, of: "PaymentTerm"
 
       def self.from_hash(hash)
         return nil if hash.nil?

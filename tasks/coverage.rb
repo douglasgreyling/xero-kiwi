@@ -126,12 +126,17 @@ module Coverage
     report[:classes][klass][name][raw.class.name] += 1
   end
 
+  # Keyed off the payload's own shape rather than the declared type, so an
+  # attribute that hydrates through a custom lambda still gets walked. Those
+  # declare `of:` purely so this can find the class — Hydrator ignores it
+  # once `hydrate:` is set. Without this, PaymentTerms and PaymentTerm read
+  # as exercised by nothing, when a recorded contact carries both.
   def descend(spec, raw, report)
     klass = child_class(spec) or return
 
-    case spec[:type]
-    when :object     then visit(klass, raw, report)
-    when :collection then Array(raw).each { |child| visit(klass, child, report) }
+    case raw
+    when Hash  then visit(klass, raw, report)
+    when Array then raw.each { |child| visit(klass, child, report) }
     end
   end
 

@@ -12,7 +12,11 @@
 
   Applies to all 36 `:decimal` attributes across `Invoice`, `CreditNote`, `Prepayment`, `Overpayment`, `Payment`, `Allocation` and `LineItem`. Floats and Integers convert via `#to_d`, which uses the shortest decimal that round-trips, so BigDecimal holds the number Xero wrote rather than the binary approximation of it. Numeric strings are parsed with `BigDecimal()` rather than `String#to_d`, because `to_d` answers `0.0` for unparseable input and a silent zero in a money field is the failure this gem has shipped twice. Unparseable input reads as `nil`, as it does for `:date`.
 
-  Upgrading: comparison is not a concern — `BigDecimal("19812.97")` equals the Float `19812.97`, and a `decimal`/`numeric` column takes it unchanged. Two things do change. `to_s` gives `"0.1981297e5"` rather than `"19812.97"` (use `to_s("F")`), and `to_json` gives that same scientific-notation **string** where a Float gave a JSON number — which is a visible change in shape if you write a money field into a `jsonb` column. `#inspect` renders decimals in plain form, so debugging output is unaffected.
+  Upgrading: comparison is not a concern — `BigDecimal("19812.97")` equals the Float `19812.97`, and a `decimal`/`numeric` column takes it unchanged. A consumer verified that last point on real data, passing five money fields straight into decimal columns with no conversion and getting identical rows.
+
+  Two things do change. `to_s` gives `"0.1981297e5"` rather than `"19812.97"` (use `to_s("F")`), and `to_json` gives that same scientific-notation **string** where a Float gave a JSON number — a visible change in shape if you write a **typed** money attribute into a `jsonb` column. **`raw` is unaffected**: it holds Xero's parsed payload untouched, so money in there is still a Float and still serialises as a JSON number. `#inspect` renders decimals in plain form, so debugging output is unaffected.
+
+  **Check for `.to_f` on money you persist.** It silently undoes this change, and a `decimal(19,4)` column holds more precision than a Float can carry — `BigDecimal("1234567890123.4567").to_f` round-trips to `1234567890123.456`. Out of reach for GBP or ZAR at ordinary invoice sizes, not for IDR or VND. A `.to_f` left over from an XML-era client, where the value arrived as a String, is where to look.
 
 - **`""` now reads as `nil` on `:decimal` attributes too.** 0.8.0 normalised empty strings on `:string`, `:enum` and `:guid` and explicitly left `:decimal` alone as wanting its own decision. This is that decision. The alternative was `BigDecimal("")` raising, or a silent zero — the same shape as both allocation regressions.
 
@@ -42,7 +46,9 @@
 
 - **`rake xero:coverage`** compares every recorded response against the resource classes that model it, and reports keys Xero sends that nothing reads, attributes nil in every recording, declared types that disagree with what arrived, and classes no recording exercises. Every silent bug this gem has shipped would have appeared in one of those four lists, with the disproving payload already committed. It reports rather than fails: gating it would need an allowlist of legitimately-absent keys, and an allowlist becomes a list nobody reads.
 
-  It also names the blind spot, and distinguishes *no cassette here* from *unverified*, which are not the same thing. `LineItem`, `TrackingCategory` and `TrackingOption` have no cassette in this repo but have each been checked against a real response elsewhere — the task now says so, and says which. `Tracking`, `PaymentTerm`, `PaymentTerms` and `ExternalLink` are genuinely unverified: no payload anywhere has carried a populated instance.
+  It also names the blind spot, and distinguishes *no cassette here* from *unverified*, which are not the same thing. `LineItem`, `TrackingCategory` and `TrackingOption` have no cassette in this repo but have each been checked against a real response elsewhere — the task now says so, and says which. Only `Tracking` and `ExternalLink` are genuinely unverified: no payload anywhere has carried a populated instance.
+
+  The walk also descends into attributes that hydrate through a custom lambda, which it previously skipped. `PaymentTerms` and `PaymentTerm` had read as exercised by nothing while a recorded contact carried both, and the type check immediately showed `PaymentTerm#day` arriving as an Integer against a `:string` declaration. Those attributes now declare `of:` purely so the audit can find the class; `Hydrator` ignores it when `hydrate:` is set.
 
 ### Documentation
 

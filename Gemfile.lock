@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    xero-kiwi (0.7.0)
+    xero-kiwi (0.8.0)
       base64 (~> 0.2)
       faraday (~> 2.0)
       faraday-retry (~> 2.0)
@@ -186,7 +186,7 @@ CHECKSUMS
   uri (1.1.1) sha256=379fa58d27ffb1387eaada68c749d1426738bd0f654d812fcc07e7568f5c57c6
   vcr (6.4.0) sha256=077ac92cc16efc5904eb90492a18153b5e6ca5398046d8a249a7c96a9ea24ae6
   webmock (3.26.4) sha256=8d8da206d217ebe6968cfb09c77f4533c23074e1432bad865f3994eacbaad50d
-  xero-kiwi (0.7.0)
+  xero-kiwi (0.8.0)
 
 BUNDLED WITH
   4.0.8

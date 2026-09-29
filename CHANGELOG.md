@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### Breaking
 
 - **Empty strings from Xero now read as `nil` on modelled attributes.** Xero sends `""` for a text field with no value, where its XML representation produced `nil`. Left as `""` it reaches a database column and quietly changes what queries match — a consumer's `where.not(xero_logo_url: nil)` started matching themes with no logo, and was one step from putting a blank image into customer statements.

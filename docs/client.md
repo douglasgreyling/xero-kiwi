@@ -278,7 +278,7 @@ review time for the silent ones.
 
 | Method | Returns | Purpose |
 |--------|---------|---------|
-| `client.connections` | `Array<XeroKiwi::Connection>` | Fetch the tenants this token is authorised against. See [Connections](connections.md). |
+| `client.connections(tenant_id: nil)` | `Array<XeroKiwi::Connection>` | Fetch the tenants this token is authorised against. `tenant_id:` is required on a client-credentials token and unused on a user token. See [Connections](connections.md). |
 | `client.contacts(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::Contact>` | Fetch the contacts for a tenant. See [Contacts](accounting/contact.md). |
 | `client.contact(tenant_id_or_connection, contact_id)` | `XeroKiwi::Accounting::Contact` | Fetch a single contact by ID. See [Contacts](accounting/contact.md). |
 | `client.contact_groups(tenant_id_or_connection)` | `Array<XeroKiwi::Accounting::ContactGroup>` | Fetch the contact groups for a tenant. See [Contact Groups](accounting/contact-group.md). |

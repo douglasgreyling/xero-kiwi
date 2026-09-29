@@ -56,6 +56,10 @@
 
   Failures raise `XeroKiwi::OAuth::ClientCredentialsError`, which subclasses `AuthenticationError` so existing rescues still catch it.
 
+**`Client#connections` takes an optional `tenant_id:`**, which that grant requires. A user token identifies a user, so Xero can answer "which tenants can you see" unaided; an app token identifies nobody and answers `400 Xero-User-Id and/or Xero-Tenant-Id header must be supplied.` Measured by a consumer against live Xero — same token, same request, one header apart. It takes a String or a `XeroKiwi::Connection`; omitting it sends no header, which is what a user token wants and is unchanged. `delete_connection` needs no tenant header and takes none.
+
+So "app tokens are untenanted" holds at the *token* level and not at the request level. The first version of these docs showed `client.connections` on a client-credentials token, which is the call that 400s.
+
 - `Accounting::Organisation` now models `tax_number_name`, which names what the organisation's locale calls its tax number (`"VAT Number"` on the recorded tenant). Present and populated in the recording, previously reachable only through `raw`.
 
 - Fields Xero's spec documents and the recordings confirm on every record, all previously reachable only through `raw`: `Invoice#is_discounted`, `Invoice#has_errors`, `CreditNote#has_errors`, `CreditNote#invoice_addresses`, `Contact#has_validation_errors`, `Payment#has_validation_errors`, `ContactGroup#has_validation_errors`, and `Prepayment#branding_theme_id`.

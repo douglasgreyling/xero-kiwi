@@ -30,7 +30,33 @@ RSpec.describe XeroKiwi::Client do
              .with(headers: { "Authorization" => "Bearer app_token" })
              .to_return(status: 200, body: "[]", headers: json_headers)
 
-      app_client.connections
+      app_client.connections(tenant_id: "22222222-2222-2222-2222-000000000001")
+
+      expect(stub).to have_been_requested
+    end
+
+    # A user token identifies a user, so Xero can answer "which tenants can
+    # you see" unaided. An app token identifies nobody, and Xero answers
+    # 400 "Xero-User-Id and/or Xero-Tenant-Id header must be supplied."
+    # Measured against live Xero by a consumer: same token, same request,
+    # one header apart.
+    it "sends the tenant header when one is given" do
+      stub = stub_request(:get, connections_endpoint)
+             .with(headers: { "Xero-Tenant-Id" => "22222222-2222-2222-2222-000000000001" })
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections(tenant_id: "22222222-2222-2222-2222-000000000001")
+
+      expect(stub).to have_been_requested
+    end
+
+    it "takes a Connection as readily as a tenant-id string" do
+      connection = XeroKiwi::Connection.new("tenantId" => "22222222-2222-2222-2222-000000000001")
+      stub       = stub_request(:get, connections_endpoint)
+                   .with(headers: { "Xero-Tenant-Id" => "22222222-2222-2222-2222-000000000001" })
+                   .to_return(status: 200, body: "[]", headers: json_headers)
+
+      app_client.connections(tenant_id: connection)
 
       expect(stub).to have_been_requested
     end
@@ -45,6 +71,18 @@ RSpec.describe XeroKiwi::Client do
   end
 
   describe "#connections" do
+    # The original behaviour, which a user token depends on: no argument,
+    # no header. Adding the tenant option must not start sending one.
+    it "sends no tenant header when none is given" do
+      stub = stub_request(:get, connections_endpoint)
+             .with { |request| !request.headers.key?("Xero-Tenant-Id") }
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      client.connections
+
+      expect(stub).to have_been_requested
+    end
+
     context "when talking to the live Xero API", vcr: { cassette_name: "connections/list" } do
       it "returns parsed XeroKiwi::Connection objects" do
         expect(client.connections).to all(be_a(XeroKiwi::Connection))

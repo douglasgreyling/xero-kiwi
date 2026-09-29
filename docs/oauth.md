@@ -373,9 +373,33 @@ oauth = XeroKiwi::OAuth.new(client_id: ENV["XERO_CLIENT_ID"],
 token  = oauth.client_credentials_token(scopes: "app.connections")
 client = XeroKiwi::Client.new(access_token: token.access_token)
 
-client.connections                       # every connection this app holds
-client.delete_connection(connection_id)  # remove a duplicate
+client.connections(tenant_id: org_tenant_id)  # the tenant header is required here
+client.delete_connection(connection_id)       # remove a duplicate
 ```
+
+### `connections` needs a tenant id on this grant
+
+`client.connections` with no argument returns **400** on a
+client-credentials token:
+
+```
+Xero-User-Id and/or Xero-Tenant-Id header must be supplied.
+```
+
+A user token identifies a user, so Xero can answer "which tenants can *you*
+see" unaided. An app token identifies nobody, so Xero needs telling which
+tenant is being asked about. Pass `tenant_id:` — a String or a
+`XeroKiwi::Connection`:
+
+```ruby
+client.connections(tenant_id: org_tenant_id)
+```
+
+`delete_connection` needs no tenant header and takes none.
+
+So "app tokens are untenanted" is true at the *token* level and not at the
+request level: the token carries no tenant, and the call still has to name
+one.
 
 ### What it's for
 

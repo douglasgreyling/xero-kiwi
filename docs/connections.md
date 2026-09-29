@@ -26,6 +26,21 @@ if the user authorised your app but didn't pick any tenants (rare, but
 possible). The endpoint doesn't take any filtering parameters — Xero returns
 everything the token has access to.
 
+### On a client-credentials token, pass `tenant_id:`
+
+```ruby
+client.connections(tenant_id: org_tenant_id)
+```
+
+Everything above assumes a **user** token, where no argument is needed. An
+app token from the [`client_credentials` grant](oauth.md#the-client-credentials-grant-no-user)
+identifies no user, so Xero can't work out whose connections to list and
+answers `400 Xero-User-Id and/or Xero-Tenant-Id header must be supplied.`
+
+`tenant_id:` takes a String or a `XeroKiwi::Connection`, and sets the
+`Xero-Tenant-Id` header. Omitting it sends no header, which is what a user
+token wants. `delete_connection` needs no tenant header on either.
+
 ## The Connection object
 
 Each `XeroKiwi::Connection` is an immutable value object exposing the fields Xero

@@ -30,6 +30,16 @@ module Coverage
   # the envelope hardcoded, so it is invisible to the lookup below.
   EXTRA_PAYLOAD_KEYS = { "Organisations" => "Organisation" }.freeze
 
+  # Classes with no cassette here whose shape has still been checked against
+  # a real response, so that "no recording" does not read as "unverified".
+  # Keep the reason specific enough to re-check.
+  CONFIRMED_ELSEWHERE = {
+    "TrackingCategory" => "live GET /TrackingCategories capture, 0.8.0 — every key modelled, nothing left over",
+    "TrackingOption"   => "same capture — the four booleans were added from it",
+    "LineItem"         => "a consumer's recorded credit-note response, 18 populated line items — " \
+                          "every key modelled; it is what proved AccountID over AccountId"
+  }.freeze
+
   EXPECTED_CLASSES = {
     string: %w[String], enum: %w[String], guid: %w[String],
     bool: %w[TrueClass FalseClass], decimal: %w[Float Integer String],

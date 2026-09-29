@@ -52,10 +52,13 @@ namespace :xero do
       end
     end
 
-    puts "\n\nClasses no recording exercises"
+    puts "\n\nClasses no cassette here exercises"
     puts "-" * 70
-    puts "  Nothing here is verified against a real payload."
-    Coverage.unexercised(report).sort_by(&:name).each { |klass| puts "    #{Coverage.short(klass)}" }
+    Coverage.unexercised(report).sort_by(&:name).each do |klass|
+      short = Coverage.short(klass)
+      note  = Coverage::CONFIRMED_ELSEWHERE[short]
+      puts note ? "    #{short} — confirmed elsewhere: #{note}" : "    #{short} — unverified"
+    end
     puts
   end
 

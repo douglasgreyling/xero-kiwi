@@ -42,7 +42,7 @@
 
 - **`rake xero:coverage`** compares every recorded response against the resource classes that model it, and reports keys Xero sends that nothing reads, attributes nil in every recording, declared types that disagree with what arrived, and classes no recording exercises. Every silent bug this gem has shipped would have appeared in one of those four lists, with the disproving payload already committed. It reports rather than fails: gating it would need an allowlist of legitimately-absent keys, and an allowlist becomes a list nobody reads.
 
-  It also names the current blind spot. `LineItem`, `Tracking`, `TrackingCategory`, `TrackingOption`, `PaymentTerms` and `ExternalLink` have **zero instances** in any recording, because list endpoints omit line items. Nothing in those classes is verified against a real payload.
+  It also names the blind spot, and distinguishes *no cassette here* from *unverified*, which are not the same thing. `LineItem`, `TrackingCategory` and `TrackingOption` have no cassette in this repo but have each been checked against a real response elsewhere — the task now says so, and says which. `Tracking`, `PaymentTerm`, `PaymentTerms` and `ExternalLink` are genuinely unverified: no payload anywhere has carried a populated instance.
 
 ### Documentation
 

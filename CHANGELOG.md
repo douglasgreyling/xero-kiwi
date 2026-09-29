@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- `Accounting::Prepayment` now models `reference`, which every comparable resource already did — `CreditNote`, `Overpayment`, `Invoice` and `Payment` all carry it. Confirmed against the recorded `prepayments/list` response: `Reference` is present on all nine records, with real values.
+
+  It was twice dismissed as a non-gap, including by me, on the strength of stored XML-era rows where the key was absent. That is the same mistake as the allocation regression — XML-derived data answering a question about JSON — and this time the JSON was already committed in `spec/fixtures` and went unread again. The recorded spec now asserts it.
+
 ### Documentation
 
 - Added the four value-object docs — Address, Phone, ExternalLink, PaymentTerms — to the README's documentation table. They existed, were in the `llms.txt` manifest and were reachable from the generated bundles, while being invisible to anyone reading the README. `rake llms:check` now fails when a doc in the manifest is not linked from the README, which is the third index to get a drift guard.

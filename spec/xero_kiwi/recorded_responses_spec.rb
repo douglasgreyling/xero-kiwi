@@ -65,6 +65,26 @@ RSpec.describe "recorded Xero responses" do # rubocop:disable RSpec/DescribeClas
     end
   end
 
+  # Reference was thought absent on prepayments, twice, because the stored
+  # XML-era rows a consumer checked had no such key. The recording says
+  # otherwise: present on all nine, with real values. Same trap as the
+  # allocation bug — XML-derived data answering a question about JSON.
+  describe "prepayment references", vcr: { cassette_name: "prepayments/list", record: :none } do
+    it "are modelled rather than reachable only through raw" do
+      expect(client.prepayments(tenant_id).map(&:reference)).to include(be_truthy)
+    end
+
+    # One call, both views — a cassette replays each interaction once, so an
+    # example that requests twice fails on the second.
+    it "match what the payload carries" do
+      prepayments = raw_client.prepayments(tenant_id)
+
+      expect(prepayments.map(&:reference)).to eq(
+        prepayments.map { |p| p.raw["Reference"] }.map { |r| r == "" ? nil : r }
+      )
+    end
+  end
+
   describe "users", vcr: { cassette_name: "users/list", record: :none } do
     subject(:users) { client.users(tenant_id) }
 

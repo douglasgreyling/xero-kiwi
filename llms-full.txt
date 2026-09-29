@@ -3045,6 +3045,7 @@ fields Xero returns:
 | `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
 | `currency_rate` | `String` | The currency rate (1.0 for base currency). |
 | `invoice_number` | `String` | The invoice number (for receive prepayments only). |
+| `reference` | `String` | The prepayment reference, as on credit notes and overpayments. Nil when Xero sends it empty. |
 | `remaining_credit` | `String` | The remaining credit balance. |
 | `allocations` | `Array<XeroKiwi::Accounting::Allocation>` | Allocations to invoices. Each has `allocation_id`, the allocated value (as both `amount` and `applied_amount` — see below), `date`, `is_deleted`, and an `invoice` reference. |
 | `payments` | `Array<XeroKiwi::Accounting::Payment>` | Payment records (references). See [Payments](payment.md). |

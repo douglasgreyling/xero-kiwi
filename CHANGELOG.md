@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-29
+
 ### Breaking
 
 - **Money attributes now return `BigDecimal` instead of `Float`.** Xero sends money as a JSON number, so Ruby parsed it into a Float and the `:decimal` type declaration passed it straight through, doing nothing. Floats cannot represent most decimal fractions, so arithmetic between two money fields drifts while each one still prints correctly:

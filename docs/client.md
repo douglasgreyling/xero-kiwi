@@ -113,6 +113,22 @@ Depend on these; they won't change without a major version.
 The one thing deliberately *not* guaranteed is the presence of `raw` on
 nested objects, per the bullet above.
 
+**This is where `raw` and the typed attributes differ on purpose.** Xero
+sends `""` for a text field with no value; the modelled attribute reads it
+as `nil`, while `raw` keeps the `""` exactly as it arrived:
+
+```ruby
+theme.logo_url        # => nil
+theme.raw["LogoUrl"]  # => ""
+```
+
+That empty string is otherwise easy to carry into a database column, where
+it quietly changes what queries match — a `where.not(logo_url: nil)` starts
+returning rows with no logo. `type: :date` has always made this call;
+strings doing otherwise was an inconsistency. Only exactly `""` is
+affected: `" "` is left alone, because trimming it would be editorialising
+on a value rather than recognising an absent one.
+
 ### Why nested objects don't carry raw
 
 Two reasons, both worth knowing if you're tempted to ask for it.

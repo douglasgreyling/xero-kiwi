@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Breaking
+
+- **Empty strings from Xero now read as `nil` on modelled attributes.** Xero sends `""` for a text field with no value, where its XML representation produced `nil`. Left as `""` it reaches a database column and quietly changes what queries match — a consumer's `where.not(xero_logo_url: nil)` started matching themes with no logo, and was one step from putting a blank image into customer statements.
+
+  Applies to `:string`, `:enum` and `:guid` attributes. `:date` has always behaved this way, so strings doing otherwise was an inconsistency rather than a principle. `:bool` and `:decimal` are untouched — there is no evidence Xero sends `""` for a numeric field, and that would want its own decision.
+
+  Only exactly `""` is affected. `" "` is left alone, because trimming it would be editorialising on a value rather than recognising an absent one. **`raw` is untouched** and still holds `""` verbatim, so the original payload is always recoverable.
+
+  Upgrading: code that chains off a string attribute without a guard (`contact.email_address.downcase`) will now raise `NoMethodError` where it silently operated on `""`. That is the intended trade — silent is the failure mode this release exists to remove.
+
 ## [0.7.0] - 2026-09-27
 
 ### Added

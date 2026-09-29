@@ -10,6 +10,8 @@
 
   Upgrading: code that chains off a string attribute without a guard (`contact.email_address.downcase`) will now raise `NoMethodError` where it silently operated on `""`. That is the intended trade — silent is the failure mode this release exists to remove.
 
+  Where to actually look: **optional text fields** — references, logo URLs, email addresses, invoice numbers — since those are the ones Xero leaves empty. Enums and IDs are effectively unaffected in practice because Xero always populates them, and code reading those tends to fail loudly either way (`hash.fetch("".downcase)` already raised `KeyError`; it now raises `NoMethodError` and loses the field name from the message). One consumer measured 14 unguarded `.downcase` calls against this change and needed no code changes at all.
+
 ### Fixed
 
 - **`Allocation#applied_amount` was nil for every allocation — 0.6.0 fixed the name and kept the bug.** Xero sends the allocated value under `"Amount"` in JSON and `"AppliedAmount"` in XML. 0.6.0 concluded the opposite, from payloads a legacy XML client had stored, and remapped the attribute to a key this JSON-only client never receives. Before 0.6.0 the mapping was right. Measured on a live tenant: 24 of 24 allocations carry `Amount`, none carry `AppliedAmount`, on both the list and single-resource endpoints.

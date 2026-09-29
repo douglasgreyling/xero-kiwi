@@ -501,10 +501,26 @@ reads are the same in both representations, only the *writer* changes:
 stop unwrapping, store the array. Existing rows stay readable, and you
 skip a migration entirely.
 
-Type coercion is usually fine in that second pile too. XML gives you
-strings — `"false"` rather than `false` — and if the reader hands that to
-something like ActiveModel's boolean cast, both the old string and the new
-real boolean land on the same value.
+**Types change too, and booleans are where it bites.** XML has no types, so
+everything arrives as a string: `"false"`, not `false`. JSON gives you the
+real thing. If your reader passes the value through a caster —
+ActiveModel's boolean cast, say — both land on the same result and you'll
+never notice. If it relies on plain Ruby truthiness, the two are opposites:
+
+```ruby
+"false" ? :yes : :no   # => :yes   ← every non-empty string is truthy
+false   ? :yes : :no   # => :no
+```
+
+A reader doing `select(&:included)` over an XML-derived `"false"` has been
+selecting the records it was meant to exclude, for as long as that code has
+existed. Moving to kiwi *fixes* it — which means the behaviour changes at
+cutover, in a way your users may see. Find those readers before you switch,
+not after: grep for boolean-ish fields consumed without a cast.
+
+This is the third axis on which the two representations differ, after
+nesting and key names. Treat "it's the same field, so it's the same value"
+as the assumption to check rather than the one to rely on.
 
 One piece of luck worth knowing about: the two piles tend to fail
 differently. A `dig` that misses returns nil and writes a blank record

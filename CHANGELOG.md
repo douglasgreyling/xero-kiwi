@@ -21,6 +21,7 @@
 - **Documented what `per_minute` and `per_day` actually guarantee.** A token bucket's configured value is both its capacity and its refill rate, and a fresh bucket starts full — so the first window can spend the capacity *and* everything refilling during it. Measured: `per_minute: 55` allows **109 calls in the first 60 seconds**, not 55. The `Choosing limits` table recommends exactly that value as headroom under Xero's 60, which it is not at a cold start; steady state does converge on the configured rate. Halve the value if you need a hard ceiling in any single window. Both behaviours now have specs so a future change is deliberate.
 
 - Noted that the two `retry_after` sources are orders of magnitude apart — Xero's reported wait on a daily 429 can be long, while `DailyLimitExhausted` is always seconds — and that anything recording a durable back-off should tag which one it came from.
+- Strengthened the XML-migration guidance in `docs/client.md` to cover **type** divergence, which it previously called "usually fine". XML has no types, so a boolean arrives as the string `"false"` — truthy in Ruby — while JSON sends a real `false`. A reader using plain truthiness rather than a cast has been doing the opposite of what it reads as, and moving to kiwi silently reverses it at cutover. Reported by a consumer who found years of statements going to contact people explicitly marked not to receive them. That is now the third documented axis of divergence, after nesting and key names.
 
 ## [0.7.0] - 2026-09-27
 

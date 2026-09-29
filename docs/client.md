@@ -215,6 +215,37 @@ This is the third axis on which the two representations differ, after
 nesting and key names. Treat "it's the same field, so it's the same value"
 as the assumption to check rather than the one to rely on.
 
+**Money is a `BigDecimal`, not a String and not a Float.** An XML client
+hands you `"19812.97"`; Xero's JSON sends the number `19812.97`, which Ruby
+parses as a Float. Kiwi converts every money field to `BigDecimal` on the
+way in, because Floats cannot represent most decimal fractions and so
+arithmetic between two of them drifts:
+
+```ruby
+17228.67 + 2584.3            # => 19812.969999999998   ← Float
+invoice.sub_total + invoice.total_tax == invoice.total # => true
+```
+
+That identity failed on 3 of the 55 invoices in this gem's recorded
+response as Floats, and on none of them as BigDecimals. Each individual
+value was correct in both — it is only arithmetic between fields that goes
+wrong, which is what makes it quiet.
+
+For migration this mostly helps. Comparison is not a concern —
+`BigDecimal("19812.97")` equals the Float `19812.97`, equals
+`BigDecimal("19812.97")`, and `BigDecimal("100")` equals `100` — and a
+`decimal`/`numeric` column takes it unchanged. Two things do change:
+
+- **`to_s` gives `"0.1981297e5"`**, not `"19812.97"`. Use `to_s("F")` for a
+  plain decimal string.
+- **`to_json` gives the string `"0.1981297e5"`**, where a Float gave the
+  number `19812.97`. If you write a money field into a `jsonb` column or an
+  API response, that is a visible change in the stored shape — from a JSON
+  number to a JSON string in scientific notation. Call `to_s("F")` or
+  `to_f` on the way in, depending on which you want.
+
+`is_a?(Float)` is also now false, though `is_a?(Numeric)` still holds.
+
 One piece of luck worth knowing about: the two piles tend to fail
 differently. A `dig` that misses returns nil and writes a blank record
 quietly. Code that assumed a Hash, such as `Array#to_h` on what is now a

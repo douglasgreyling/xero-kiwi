@@ -31,7 +31,7 @@ items. Fetch an individual invoice for full details including line items.
 
 ```ruby
 inv = client.invoice(tenant_id, "243216c5-369e-4056-ac67-05388f86dc81")
-inv.total           # => "2025.00"
+inv.total           # => BigDecimal("2025.00")
 inv.invoice_number  # => "OIT00546"
 ```
 
@@ -54,13 +54,13 @@ cover both the list and single-invoice responses:
 | `status` | `String` | e.g. `"DRAFT"`, `"SUBMITTED"`, `"AUTHORISED"`, `"PAID"`, `"VOIDED"`, `"DELETED"`. |
 | `line_amount_types` | `String` | `"Inclusive"`, `"Exclusive"`, or `"NoTax"`. |
 | `line_items` | `Array<XeroKiwi::Accounting::LineItem>` | The line items (empty on list, populated on single). See [Prepayments — LineItem](prepayment.md#the-lineitem-object). |
-| `sub_total` | `String/Numeric` | The subtotal excluding taxes. |
-| `total_tax` | `String/Numeric` | The total tax amount. |
-| `total` | `String/Numeric` | The total (subtotal + total tax). |
-| `total_discount` | `String/Numeric` | Total discounts on line items. |
+| `sub_total` | `BigDecimal` | The subtotal excluding taxes. |
+| `total_tax` | `BigDecimal` | The total tax amount. |
+| `total` | `BigDecimal` | The total (subtotal + total tax). |
+| `total_discount` | `BigDecimal` | Total discounts on line items. |
 | `updated_date_utc` | `Time` | When the invoice was last modified, parsed as UTC. |
 | `currency_code` | `String` | The currency code (e.g. `"NZD"`). |
-| `currency_rate` | `Numeric` | The currency rate (1.0 for base currency). |
+| `currency_rate` | `BigDecimal` | The currency rate (1.0 for base currency). |
 | `reference` | `String` | Additional reference number (ACCREC only). |
 | `branding_theme_id` | `String` | The branding theme ID. |
 | `url` | `String` | URL link to a source document. |
@@ -73,10 +73,10 @@ cover both the list and single-invoice responses:
 | `credit_notes` | `Array<Hash>` | Credit notes applied (raw hashes). |
 | `prepayments` | `Array<Hash>` | Prepayments applied (raw hashes). |
 | `overpayments` | `Array<Hash>` | Overpayments applied (raw hashes). |
-| `amount_due` | `String/Numeric` | Amount remaining to be paid. |
-| `amount_paid` | `String/Numeric` | Sum of payments received. |
-| `amount_credited` | `String/Numeric` | Sum of credit notes, overpayments, and prepayments applied. |
-| `cis_deduction` | `Numeric` | CIS deduction (UK Construction Industry Scheme only). |
+| `amount_due` | `BigDecimal` | Amount remaining to be paid. |
+| `amount_paid` | `BigDecimal` | Sum of payments received. |
+| `amount_credited` | `BigDecimal` | Sum of credit notes, overpayments, and prepayments applied. |
+| `cis_deduction` | `BigDecimal` | CIS deduction (UK Construction Industry Scheme only). |
 | `fully_paid_on_date` | `Time` | When the invoice was fully paid, parsed as UTC. |
 | `sales_tax_calculation_type_code` | `String` | US auto sales tax calculation type. |
 | `invoice_addresses` | `Array<Hash>` | Invoice addresses (US auto sales tax only). |

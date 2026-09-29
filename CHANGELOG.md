@@ -1,5 +1,45 @@
 ## [Unreleased]
 
+### Breaking
+
+- **Money attributes now return `BigDecimal` instead of `Float`.** Xero sends money as a JSON number, so Ruby parsed it into a Float and the `:decimal` type declaration passed it straight through, doing nothing. Floats cannot represent most decimal fractions, so arithmetic between two money fields drifts while each one still prints correctly:
+
+  ```ruby
+  17228.67 + 2584.3   # => 19812.969999999998, where Xero's Total is 19812.97
+  ```
+
+  Measured against the recorded `invoices/list` response, `sub_total + total_tax == total` failed on **3 of 55 invoices** as Floats and on **none** as BigDecimals. Every individual value round-trips exactly — all 111 distinct money literals in that recording — so the failure only appears once you do arithmetic, which is what makes it quiet.
+
+  Applies to all 36 `:decimal` attributes across `Invoice`, `CreditNote`, `Prepayment`, `Overpayment`, `Payment`, `Allocation` and `LineItem`. Floats and Integers convert via `#to_d`, which uses the shortest decimal that round-trips, so BigDecimal holds the number Xero wrote rather than the binary approximation of it. Numeric strings are parsed with `BigDecimal()` rather than `String#to_d`, because `to_d` answers `0.0` for unparseable input and a silent zero in a money field is the failure this gem has shipped twice. Unparseable input reads as `nil`, as it does for `:date`.
+
+  Upgrading: comparison is not a concern — `BigDecimal("19812.97")` equals the Float `19812.97`, and a `decimal`/`numeric` column takes it unchanged. Two things do change. `to_s` gives `"0.1981297e5"` rather than `"19812.97"` (use `to_s("F")`), and `to_json` gives that same scientific-notation **string** where a Float gave a JSON number — which is a visible change in shape if you write a money field into a `jsonb` column. `#inspect` renders decimals in plain form, so debugging output is unaffected.
+
+- **`""` now reads as `nil` on `:decimal` attributes too.** 0.8.0 normalised empty strings on `:string`, `:enum` and `:guid` and explicitly left `:decimal` alone as wanting its own decision. This is that decision. The alternative was `BigDecimal("")` raising, or a silent zero — the same shape as both allocation regressions.
+
+### Fixed
+
+- **`invoice.credit_notes`, `invoice.prepayments` and `invoice.overpayments` returned objects with the applied amount missing.** Xero nests **allocation stubs** under an invoice, not whole documents: a stub carries `AppliedAmount`, the amount applied to *that* invoice. Nothing modelled that key, so the nearest-looking reader was `total` — the document's own total, and a different number on **19 of the 24 stubs** in the recorded response. On one, `total` was `10983.65` where `applied_amount` was `857.35`.
+
+  All three resources now model `applied_amount`. It is `nil` on a document fetched in its own right, where Xero sends no such key, and populated on every stub in the recording. The only route to it before was `invoice.raw["CreditNotes"]` with `retain_raw: true`, since nested objects carry no `#raw`.
+
+  Found by the coverage task below rather than by comparison or by reading Xero's docs — the key is in no doc table, because the docs describe the XML representation and this shape only exists in JSON.
+
+### Added
+
+- `Accounting::Organisation` now models `tax_number_name`, which names what the organisation's locale calls its tax number (`"VAT Number"` on the recorded tenant). Present and populated in the recording, previously reachable only through `raw`.
+
+- **`rake xero:coverage`** compares every recorded response against the resource classes that model it, and reports keys Xero sends that nothing reads, attributes nil in every recording, declared types that disagree with what arrived, and classes no recording exercises. Every silent bug this gem has shipped would have appeared in one of those four lists, with the disproving payload already committed. It reports rather than fails: gating it would need an allowlist of legitimately-absent keys, and an allowlist becomes a list nobody reads.
+
+  It also names the current blind spot. `LineItem`, `Tracking`, `TrackingCategory`, `TrackingOption`, `PaymentTerms` and `ExternalLink` have **zero instances** in any recording, because list endpoints omit line items. Nothing in those classes is verified against a real payload.
+
+### Documentation
+
+- Money attribute types were documented three different ways for the same field — `String` on Overpayment and Prepayment, `Numeric` on CreditNote and Payment, `String/Numeric` on Invoice — and three examples showed `total # => "100.00"`, a quoted string it never was. All 32 rows now say `BigDecimal`, generated from the attribute declarations so they cannot drift apart again.
+
+- Each of Credit Note, Prepayment and Overpayment gained a **Nested under an invoice** section covering the stub shape, with the figures taken from the recorded response rather than invented.
+
+- `docs/client.md` documents money as a fourth thing to check when migrating from an XML client, alongside the existing nesting, key-name and type axes.
+
 ## [0.9.0] - 2026-09-29
 
 ### Added

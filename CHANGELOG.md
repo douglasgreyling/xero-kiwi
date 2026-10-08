@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-08
+
 ### Added
 
 - **`include_archived:`** on `tracking_categories` / `each_tracking_category` / `each_tracking_category_page`, matching the contacts methods. Maps to Xero's `includeArchived`. Without it, Xero leaves out archived categories *and* the archived options under active ones, so a sync that mirrors the list — deleting whatever Xero didn't return — deletes every archived option, and historical invoices tagged with one stop resolving. A consumer's legacy XML client sent the flag; on 0.10.0 passing it raised `ArgumentError: unknown keyword: :include_archived`.

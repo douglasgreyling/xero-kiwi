@@ -55,8 +55,8 @@ the `Xero-Tenant-Id` header set, and returns a `XeroKiwi::Page` of
 Archived categories, and archived options under active ones, are left out
 unless you pass `include_archived: true`. See [Querying](../querying.md).
 
-This endpoint isn't paged — an organisation has at most two active
-categories. `each_tracking_category` exists so all ten list resources behave
+This endpoint isn't paged — Xero returns every category in one response, and
+an organisation has at most two active ones. `each_tracking_category` exists so all ten list resources behave
 consistently, but there's no reason to reach for it over the plain call.
 
 ## Fetching a single category
@@ -161,6 +161,11 @@ end
 
 ### Ignoring archived categories
 
+Xero leaves archived categories out unless you ask for them, so a plain
+`client.tracking_categories(tenant_id)` already returns only active ones.
+Filter when you fetched archived ones too, for a lookup like the one above:
+
 ```ruby
-active = client.tracking_categories(tenant_id).select(&:active?)
+categories = client.tracking_categories(tenant_id, include_archived: true)
+active     = categories.select(&:active?)
 ```

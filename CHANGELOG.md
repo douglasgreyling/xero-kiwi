@@ -7,6 +7,7 @@
 ### Documentation
 
 - The tracking categories "lookup from option ID" example now passes `include_archived: true`. Without it, `options.fetch` raises `KeyError` on any line item tagged with an archived option.
+- The "Ignoring archived categories" example filtered a list that could never contain one, since Xero leaves archived categories out by default. It now says so, and shows the filter on a list fetched with `include_archived: true`.
 
 ## [0.10.0] - 2026-09-29
 

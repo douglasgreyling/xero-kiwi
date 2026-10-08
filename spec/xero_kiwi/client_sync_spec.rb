@@ -210,6 +210,16 @@ RSpec.describe XeroKiwi::Client do
       expect(stub).to have_been_requested
     end
 
+    it "sends includeArchived=false on tracking categories when asked to" do
+      stub = stub_request(:get, tracking_categories_endpoint)
+             .with(query: { "includeArchived" => "false" })
+             .to_return(status: 200, body: JSON.dump("TrackingCategories" => []), headers: json_headers)
+
+      client.tracking_categories(tenant_id, include_archived: false)
+
+      expect(stub).to have_been_requested
+    end
+
     it "omits it from tracking categories when not asked for" do
       stub_request(:get, tracking_categories_endpoint)
         .to_return(status: 200, body: JSON.dump("TrackingCategories" => []), headers: json_headers)
@@ -220,14 +230,16 @@ RSpec.describe XeroKiwi::Client do
         .with { |req| !req.uri.query.to_s.include?("includeArchived") }
     end
 
-    it "sends it with every page of a tracking category walk", :aggregate_failures do
-      stub_tracking_category_page(1, %w[a])
-      stub_tracking_category_page(2, [])
+    %i[each_tracking_category each_tracking_category_page].each do |walk|
+      it "sends it with every page of #{walk}", :aggregate_failures do
+        stub_tracking_category_page(1, %w[a])
+        stub_tracking_category_page(2, [])
 
-      client.each_tracking_category_page(tenant_id, include_archived: true).to_a
+        client.public_send(walk, tenant_id, include_archived: true).to_a
 
-      expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "1", "includeArchived" => "true" })
-      expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "2", "includeArchived" => "true" })
+        expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "1", "includeArchived" => "true" })
+        expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "2", "includeArchived" => "true" })
+      end
     end
 
     # A query parameter on contacts and tracking categories only, not a shared

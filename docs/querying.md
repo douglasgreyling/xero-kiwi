@@ -233,14 +233,18 @@ exception, no special flag. An empty page after `modified_since:` is
 indistinguishable from a filter that matched nothing (intentional — the
 caller can treat them identically).
 
-## `include_archived:` — archived contacts
+## `include_archived:` — archived contacts and tracking categories
 
-Contacts only. Maps to Xero's `includeArchived` query param, which returns
-archived contacts **alongside** active ones in the same pass.
+Contacts and tracking categories only. Maps to Xero's `includeArchived`
+query param, which returns archived records **alongside** active ones in
+the same pass.
 
 ```ruby
 client.contacts(tenant, include_archived: true)
 client.each_contact(tenant, include_archived: true) { |contact| … }
+
+client.tracking_categories(tenant, include_archived: true)
+client.each_tracking_category(tenant, include_archived: true) { |category| … }
 ```
 
 This is not the same as filtering on `contact_status`. A
@@ -251,6 +255,11 @@ want when mirroring a tenant's full contact list.
 It matters beyond contacts themselves: Xero keeps serving archived
 contacts as members of contact groups, so without this you can't tell
 which group members are archived locally.
+
+For tracking categories it reaches the options too. Without it, Xero leaves
+out archived categories *and* the archived options under active ones. Line
+items keep pointing at an archived option, so a sync that mirrors the list
+without this flag deletes options its invoices still refer to.
 
 ## Combining everything
 

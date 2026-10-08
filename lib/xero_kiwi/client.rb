@@ -617,7 +617,11 @@ module XeroKiwi
     # Fetches the Tracking Categories for the given tenant. Accepts a tenant-id
     # string or a XeroKiwi::Connection (we use its tenant_id).
     # See: https://developer.xero.com/documentation/api/accounting/trackingcategories
-    def tracking_categories(tenant_id, where: nil, order: nil, page_size: nil, page: nil, modified_since: nil)
+    def tracking_categories(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, page: nil, modified_since: nil)
+      extra_params = {}
+
+      extra_params["includeArchived"] = include_archived unless include_archived.nil?
+
       list_request(
         path:           "/api.xro/2.0/TrackingCategories",
         tenant_id:      tenant_id,
@@ -626,27 +630,28 @@ module XeroKiwi
         order:          order,
         page:           page,
         page_size:      page_size,
-        modified_since: modified_since
+        modified_since: modified_since,
+        extra_params:   extra_params
       )
     end
 
     # Yields every Tracking Category across all pages, driving `#tracking_categories` with
     # `page:` until an empty or short page signals the end. Returns an
     # Enumerator when no block is given.
-    def each_tracking_category(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
-      return to_enum(:each_tracking_category, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+    def each_tracking_category(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_tracking_category, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) unless block
 
-      each_tracking_category_page(tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
+      each_tracking_category_page(tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) { |pg| pg.each(&block) }
     end
 
     # Same walk as `#each_tracking_category`, but yields each XeroKiwi::Page rather
     # than its items. Pair `page.page` with `start_page:` to make a sync
     # resumable: record the page number in the same transaction that stores
     # the rows, and a crash can't leave a marker ahead of the data.
-    def each_tracking_category_page(tenant_id, where: nil, order: nil, page_size: nil, start_page: 1, modified_since: nil, &block)
-      return to_enum(:each_tracking_category_page, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since) unless block
+    def each_tracking_category_page(tenant_id, where: nil, order: nil, page_size: nil, include_archived: nil, start_page: 1, modified_since: nil, &block)
+      return to_enum(:each_tracking_category_page, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since) unless block
 
-      walk_pages(:tracking_categories, tenant_id, where: where, order: order, page_size: page_size, start_page: start_page, modified_since: modified_since, &block)
+      walk_pages(:tracking_categories, tenant_id, where: where, order: order, page_size: page_size, include_archived: include_archived, start_page: start_page, modified_since: modified_since, &block)
     end
 
     # Fetches a single Tracking Category by ID for the given tenant. Accepts a

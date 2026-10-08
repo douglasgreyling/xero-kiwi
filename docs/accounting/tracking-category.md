@@ -52,8 +52,11 @@ categories.first.options.map(&:name)  # => ["Eastside", "Westside"]
 the `Xero-Tenant-Id` header set, and returns a `XeroKiwi::Page` of
 `TrackingCategory` objects.
 
-This endpoint isn't paged — an organisation has at most two active
-categories. `each_tracking_category` exists so all ten list resources behave
+Archived categories, and archived options under active ones, are left out
+unless you pass `include_archived: true`. See [Querying](../querying.md).
+
+This endpoint isn't paged — Xero returns every category in one response, and
+an organisation has at most two active ones. `each_tracking_category` exists so all ten list resources behave
 consistently, but there's no reason to reach for it over the plain call.
 
 ## Fetching a single category
@@ -139,10 +142,12 @@ so it falls back to structural equality — every attribute must match.
 ### Building a lookup from option ID to names
 
 Line items carry only IDs and denormalised names; if you need the canonical
-option list, fetch the definitions once per sync and index them.
+option list, fetch the definitions once per sync and index them. Include
+archived ones, or a line item tagged with an archived option raises
+`KeyError`.
 
 ```ruby
-options = client.tracking_categories(tenant_id).flat_map do |category|
+options = client.tracking_categories(tenant_id, include_archived: true).flat_map do |category|
   category.options.map { |option| [option.tracking_option_id, [category.name, option.name]] }
 end.to_h
 
@@ -156,6 +161,11 @@ end
 
 ### Ignoring archived categories
 
+Xero leaves archived categories out unless you ask for them, so a plain
+`client.tracking_categories(tenant_id)` already returns only active ones.
+Filter when you fetched archived ones too, for a lookup like the one above:
+
 ```ruby
-active = client.tracking_categories(tenant_id).select(&:active?)
+categories = client.tracking_categories(tenant_id, include_archived: true)
+active     = categories.select(&:active?)
 ```

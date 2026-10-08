@@ -5,11 +5,12 @@
 # introspection. Kept apart from client_spec.rb, which is already long and
 # organised one describe per endpoint.
 RSpec.describe XeroKiwi::Client do
-  let(:access_token)      { "test_token" }
-  let(:tenant_id)         { "70784a63-d24b-46a9-a4db-0e70a274b056" }
-  let(:json_headers)      { { "Content-Type" => "application/json" } }
-  let(:invoices_endpoint) { "https://api.xero.com/api.xro/2.0/Invoices" }
-  let(:contacts_endpoint) { "https://api.xero.com/api.xro/2.0/Contacts" }
+  let(:access_token)                 { "test_token" }
+  let(:tenant_id)                    { "70784a63-d24b-46a9-a4db-0e70a274b056" }
+  let(:json_headers)                 { { "Content-Type" => "application/json" } }
+  let(:invoices_endpoint)            { "https://api.xero.com/api.xro/2.0/Invoices" }
+  let(:contacts_endpoint)            { "https://api.xero.com/api.xro/2.0/Contacts" }
+  let(:tracking_categories_endpoint) { "https://api.xero.com/api.xro/2.0/TrackingCategories" }
 
   def client(**)
     described_class.new(access_token: access_token, **)
@@ -19,6 +20,14 @@ RSpec.describe XeroKiwi::Client do
     body = page_size ? invoice_body(ids, page: number, page_size: page_size) : invoice_body(ids)
 
     stub_request(:get, invoices_endpoint)
+      .with(query: hash_including("page" => number.to_s))
+      .to_return(status: 200, body: JSON.dump(body), headers: json_headers)
+  end
+
+  def stub_tracking_category_page(number, ids)
+    body = { "TrackingCategories" => ids.map { |id| { "TrackingCategoryID" => id } } }
+
+    stub_request(:get, tracking_categories_endpoint)
       .with(query: hash_including("page" => number.to_s))
       .to_return(status: 200, body: JSON.dump(body), headers: json_headers)
   end
@@ -191,8 +200,50 @@ RSpec.describe XeroKiwi::Client do
         .with { |req| !req.uri.query.to_s.include?("includeArchived") }
     end
 
-    # It's a contacts-only query parameter, not a shared one — the generic
-    # list path must not grow it for the other nine resources.
+    it "sends includeArchived on tracking categories" do
+      stub = stub_request(:get, tracking_categories_endpoint)
+             .with(query: { "includeArchived" => "true" })
+             .to_return(status: 200, body: JSON.dump("TrackingCategories" => []), headers: json_headers)
+
+      client.tracking_categories(tenant_id, include_archived: true)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "sends includeArchived=false on tracking categories when asked to" do
+      stub = stub_request(:get, tracking_categories_endpoint)
+             .with(query: { "includeArchived" => "false" })
+             .to_return(status: 200, body: JSON.dump("TrackingCategories" => []), headers: json_headers)
+
+      client.tracking_categories(tenant_id, include_archived: false)
+
+      expect(stub).to have_been_requested
+    end
+
+    it "omits it from tracking categories when not asked for" do
+      stub_request(:get, tracking_categories_endpoint)
+        .to_return(status: 200, body: JSON.dump("TrackingCategories" => []), headers: json_headers)
+
+      client.tracking_categories(tenant_id)
+
+      expect(WebMock).to have_requested(:get, tracking_categories_endpoint)
+        .with { |req| !req.uri.query.to_s.include?("includeArchived") }
+    end
+
+    %i[each_tracking_category each_tracking_category_page].each do |walk|
+      it "sends it with every page of #{walk}", :aggregate_failures do
+        stub_tracking_category_page(1, %w[a])
+        stub_tracking_category_page(2, [])
+
+        client.public_send(walk, tenant_id, include_archived: true).to_a
+
+        expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "1", "includeArchived" => "true" })
+        expect(WebMock).to have_requested(:get, tracking_categories_endpoint).with(query: { "page" => "2", "includeArchived" => "true" })
+      end
+    end
+
+    # A query parameter on contacts and tracking categories only, not a shared
+    # one — the generic list path must not grow it for the other eight resources.
     it "is not accepted on other resources" do
       expect { client.invoices(tenant_id, include_archived: true) }
         .to raise_error(ArgumentError, /unknown keyword: :include_archived/)

@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-19
+
 ### Breaking
 
 - **Timeouts and failed connections now raise `XeroKiwi::ConnectionError`.** They used to escape as `Faraday::TimeoutError`, `Faraday::ConnectionFailed` or `Faraday::SSLError`. None of these is a `XeroKiwi::Error`, so `rescue XeroKiwi::Error` missed them. All three are now wrapped in `XeroKiwi::ConnectionError < XeroKiwi::Error`, with the original as `cause`. The client's retry middleware still sees and retries Faraday's own errors; the wrap only happens once it gives up.

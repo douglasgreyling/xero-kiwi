@@ -40,6 +40,9 @@ oauth = XeroKiwi::OAuth.new(
 | `client_secret:` | `String` | Yes | — | Your Xero app's client secret |
 | `redirect_uri:` | `String` | Conditional | `nil` | Required for `authorization_url` and `exchange_code`. **Optional** if you only use this instance for `revoke_token` or `verify_id_token`. |
 | `adapter:` | Faraday adapter | No | `Faraday.default_adapter` | The HTTP adapter for token-endpoint and JWKS calls |
+| `open_timeout:` | `Numeric` | No | `5` | Seconds to wait for a connection to identity.xero.com. See [Timeouts](#timeouts). |
+| `timeout:` | `Numeric` | No | `10` | Seconds to wait for each read of the response. |
+| `write_timeout:` | `Numeric` | No | `10` | Seconds to wait for each write of the request. |
 
 ### Why `redirect_uri:` is optional
 
@@ -57,6 +60,32 @@ If you're building a "revoke-only" instance for a logout flow, or a
 fake redirect URL. Pass `redirect_uri: nil` (or just omit it). If you then
 *do* call `authorization_url` or `exchange_code`, you'll get a clear
 `ArgumentError` at call time rather than a confusing 400 from Xero.
+
+### Timeouts
+
+Every call the instance makes — `exchange_code`, `client_credentials_token`,
+`revoke_token` and the JWKS fetch behind `verify_id_token` — gives up after
+these limits and raises `XeroKiwi::ConnectionError`. Faraday's
+`Faraday::TimeoutError` or `Faraday::ConnectionFailed` is its `cause`.
+
+Without them, each call would use Net::HTTP's defaults of 60 seconds to
+connect, 60 to read and 60 to write. The code exchange and the ID token check
+usually run inside a web request, so a slow identity.xero.com would hold that
+request, and its server thread, for a minute or more.
+
+```ruby
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  redirect_uri:  "https://app.example.com/xero/callback",
+  open_timeout:  2,
+  timeout:       5
+)
+```
+
+Identity calls are not retried, so the limits are close to the whole wait.
+`timeout:` applies to each read from the socket, so a response that keeps
+arriving slowly can take longer in total.
 
 ## Step 1: building the authorisation URL
 
@@ -263,7 +292,7 @@ id_token, and scope. See [Tokens](tokens.md) for the full reference.
 | Wrong `redirect_uri` (must match the one used at authorise time) | `XeroKiwi::OAuth::CodeExchangeError` |
 | PKCE verifier mismatch | `XeroKiwi::OAuth::CodeExchangeError` |
 | Wrong client credentials | `XeroKiwi::OAuth::CodeExchangeError` |
-| Network error | bubbles up as a `Faraday::ConnectionFailed` |
+| Timeout, or no connection to Xero | `XeroKiwi::ConnectionError`, with Faraday's error as its `cause` |
 
 `XeroKiwi::OAuth::CodeExchangeError` inherits from `XeroKiwi::AuthenticationError`,
 so you can catch the broader class if you don't care about the distinction.
@@ -311,6 +340,15 @@ verified = XeroKiwi::OAuth::IDToken.verify(
 The standalone class method **fetches JWKS fresh on every call** via
 `Net::HTTP`. Fine for one-off use, wasteful in a hot loop. If you find
 yourself calling it repeatedly, switch to the OAuth instance method.
+
+It takes the same `open_timeout:`, `timeout:` and `write_timeout:` options
+as `OAuth.new`, with the same defaults. Unlike the instance method, it raises
+`XeroKiwi::OAuth::IDTokenError` when the fetch times out, as it does for any
+other failure to fetch the JWKS.
+
+```ruby
+XeroKiwi::OAuth::IDToken.verify(id_token, client_id: "...", timeout: 5)
+```
 
 You can also inject your own JWKS provider:
 
@@ -443,6 +481,7 @@ auto-refresh paths stay out of the way.
 |-------|-----------|
 | Wrong `client_id` / `client_secret` | `XeroKiwi::OAuth::ClientCredentialsError` |
 | Scope the app isn't authorised for | `XeroKiwi::OAuth::ClientCredentialsError` |
+| Timeout, or no connection to Xero | `XeroKiwi::ConnectionError`, with Faraday's error as its `cause` |
 
 `ClientCredentialsError` subclasses `XeroKiwi::AuthenticationError`, so an
 existing `rescue XeroKiwi::AuthenticationError` still catches it. There is

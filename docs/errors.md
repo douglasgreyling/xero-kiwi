@@ -16,6 +16,7 @@ StandardError
    │  ├─ XeroKiwi::ClientError           (other 4xx)
    │  ├─ XeroKiwi::ServerError           (5xx)
    │  └─ XeroKiwi::RateLimitError        (429, with retry_after + problem)
+   ├─ XeroKiwi::ConnectionError          (timeout or failed connection)
    ├─ XeroKiwi::OAuth::StateMismatchError  (CSRF check failed)
    └─ XeroKiwi::OAuth::IDTokenError        (ID token JWT verification failed)
 ```
@@ -23,12 +24,16 @@ StandardError
 A few things worth noticing about the shape:
 
 - **Everything Xero Kiwi raises** descends from `XeroKiwi::Error`. If you only want
-  one rescue clause for "the Xero integration broke," catch this.
+  one rescue clause for "the Xero integration broke," catch this. The one
+  exception is a response that says it is JSON but does not parse, which
+  raises Faraday's own `Faraday::ParsingError`.
 - **HTTP responses** descend from `XeroKiwi::APIError`, which carries `status`
   and `body` attributes you can inspect.
 - **OAuth-specific errors** for state mismatch and ID token verification
   descend from `XeroKiwi::Error` directly (not `APIError`) because they don't
   come from an HTTP response — they're local validation failures.
+- **`XeroKiwi::ConnectionError`** descends from `XeroKiwi::Error` directly
+  too. No response arrived, so there is no status or body to carry.
 - **`XeroKiwi::TokenRefreshError`** and **`XeroKiwi::OAuth::CodeExchangeError`** are
   both `AuthenticationError` subclasses, because the practical recovery is
   the same as for any 401: the user needs to re-authorise.
@@ -136,6 +141,30 @@ Extra attributes beyond `APIError`:
 Sidekiq job can re-enqueue itself with that delay rather than hammering
 Xero.
 
+### `XeroKiwi::ConnectionError`
+
+Raised when a request hits its `open_timeout:`, `timeout:` or
+`write_timeout:`, or when the connection fails (refused, reset, the host
+does not resolve, or the TLS handshake fails). `XeroKiwi::Client` raises it
+only after its retries are exhausted, except for a TLS failure, which it
+does not retry. Identity calls (code exchange, client credentials, refresh,
+revoke and the JWKS fetch) are not retried.
+
+The original `Faraday::TimeoutError`, `Faraday::ConnectionFailed` or
+`Faraday::SSLError` is the error's `cause`:
+
+```ruby
+rescue XeroKiwi::ConnectionError => e
+  e.cause # => #<Faraday::TimeoutError: Net::ReadTimeout ...>
+```
+
+`XeroKiwi::OAuth::IDToken.verify` without `jwks:` is the one exception: it
+raises `XeroKiwi::OAuth::IDTokenError` for any failure to fetch the JWKS,
+timeouts included.
+
+See [Client — Timeouts](client.md#timeouts) and [OAuth — Timeouts](oauth.md#timeouts)
+for the limits and their defaults.
+
 ### `XeroKiwi::OAuth::StateMismatchError`
 
 Raised by `XeroKiwi::OAuth.verify_state!` when the `state` parameter Xero
@@ -156,7 +185,9 @@ the ID token JWT can't be verified. Causes:
 - Wrong audience.
 - Token expired.
 - Nonce mismatch (when nonce verification was requested).
-- Network failure fetching JWKS.
+- Network failure fetching JWKS, through `IDToken.verify` without `jwks:`.
+  Through `oauth.verify_id_token`, a network failure raises
+  `XeroKiwi::ConnectionError` instead.
 
 The error message has a brief description of which check failed (e.g.
 `"ID token verification failed: Signature verification failed"`,
@@ -223,10 +254,12 @@ rescue XeroKiwi::OAuth::CodeExchangeError
   redirect_to root_path, alert: "Could not complete Xero authorisation"
 rescue XeroKiwi::OAuth::IDTokenError
   redirect_to root_path, alert: "Could not verify Xero identity"
+rescue XeroKiwi::ConnectionError
+  redirect_to root_path, alert: "Xero did not respond. Please try again."
 end
 ```
 
-Three separate rescue clauses give you three different user-facing
+Four separate rescue clauses give you four different user-facing
 messages, which is usually what you want for an OAuth callback — different
 failures imply different user actions.
 

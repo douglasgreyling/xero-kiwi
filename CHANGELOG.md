@@ -1,5 +1,34 @@
 ## [Unreleased]
 
+### Breaking
+
+- **Timeouts and failed connections now raise `XeroKiwi::ConnectionError`.** They used to escape as `Faraday::TimeoutError`, `Faraday::ConnectionFailed` or `Faraday::SSLError`. None of these is a `XeroKiwi::Error`, so `rescue XeroKiwi::Error` missed them. All three are now wrapped in `XeroKiwi::ConnectionError < XeroKiwi::Error`, with the original as `cause`. The client's retry middleware still sees and retries Faraday's own errors; the wrap only happens once it gives up.
+
+  Upgrading: a `rescue` of any of those three Faraday errors around a kiwi call no longer matches. Rescue `XeroKiwi::ConnectionError`, and read `e.cause` if you need to tell them apart.
+
+  `XeroKiwi::OAuth::IDToken.verify` without `jwks:` is unchanged: it still raises `IDTokenError` for any failure to fetch the JWKS.
+
+### Changed
+
+- **Every HTTP call now has a timeout.** There were none, so each call used Net::HTTP's defaults of 60 seconds to connect, 60 to read and 60 to write. A consumer runs the code exchange and the ID token check inside a web request, and retries the exchange 3 times, so a slow identity.xero.com held a server thread for minutes. The defaults are now:
+
+  | Host | Used by | Connect | Read | Write |
+  |------|---------|---------|------|-------|
+  | identity.xero.com | `OAuth`, `TokenRefresher`, `IDToken.verify` | 5s | 10s | 10s |
+  | api.xero.com | `Client` | 5s | 60s | 10s |
+
+  The API read stays at 60 seconds because a page of 1,000 invoices can be slow. The client retries a timeout up to 4 times, so one hung API request can still take more than 5 minutes to fail. Lower `timeout:` and `retry_options: { max: ... }` together where that matters.
+
+  `IDToken.verify` without `jwks:` also stops Net::HTTP retrying a timed-out JWKS fetch, which doubled its wait.
+
+### Added
+
+- **`open_timeout:`, `timeout:` and `write_timeout:`**, in seconds, on `XeroKiwi::OAuth.new`, `XeroKiwi::TokenRefresher.new`, `XeroKiwi::OAuth::IDToken.verify` and `XeroKiwi::Client.new`. `timeout:` is the read timeout, under the name Faraday gives it. The refresh and revoke calls a `Client` makes use the identity defaults, not the client's own values.
+
+### Documentation
+
+- The errors doc said everything kiwi raises is a `XeroKiwi::Error`. One Faraday error still escapes: `Faraday::ParsingError`, when a response says it is JSON but does not parse. The doc now says so.
+
 ## [0.11.0] - 2026-10-08
 
 ### Added

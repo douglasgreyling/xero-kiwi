@@ -145,6 +145,34 @@ else
 end
 ```
 
+### Timeouts
+
+A refresh goes to identity.xero.com, not api.xero.com, so it uses the
+identity timeouts: 5 seconds to connect, 10 to read and 10 to write. The
+client's own `timeout:` does not apply to it. When identity.xero.com does not
+answer in time, the refresh raises `XeroKiwi::ConnectionError` rather than
+holding the thread for Net::HTTP's default of 60 seconds.
+
+`XeroKiwi::TokenRefresher` takes the same options as `XeroKiwi::OAuth.new`
+if you use it directly:
+
+```ruby
+refresher = XeroKiwi::TokenRefresher.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  open_timeout:  2,
+  timeout:       5
+)
+
+refresher.refresh(refresh_token: stored_refresh_token)
+```
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `open_timeout:` | `5` | Seconds to wait for a connection. |
+| `timeout:` | `10` | Seconds to wait for each read of the response. |
+| `write_timeout:` | `10` | Seconds to wait for each write of the request. |
+
 ## The `on_token_refresh` callback
 
 This is the most important integration point in the gem. Every time the
@@ -275,7 +303,9 @@ This:
    current refresh token.
 2. Returns `true` on success.
 3. Raises `XeroKiwi::TokenRefreshError` if the client has no refresh capability,
-   or `XeroKiwi::AuthenticationError` if Xero rejects the revoke.
+   `XeroKiwi::AuthenticationError` if Xero rejects the revoke, or
+   `XeroKiwi::ConnectionError` if identity.xero.com does not answer within the
+   [identity timeouts](#timeouts).
 
 After revocation, **treat the client as dead.** Subsequent API calls will
 401, and reactive refresh will fail because the refresh token is gone too.

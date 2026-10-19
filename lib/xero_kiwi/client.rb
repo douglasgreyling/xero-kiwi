@@ -52,6 +52,10 @@ module XeroKiwi
       ]
     }.freeze
 
+    DEFAULT_OPEN_TIMEOUT  = 5
+    DEFAULT_READ_TIMEOUT  = 60
+    DEFAULT_WRITE_TIMEOUT = 10
+
     attr_reader :token
 
     def initialize(
@@ -66,7 +70,10 @@ module XeroKiwi
       retry_options: {},
       throttle: nil,
       page_size: nil,
-      retain_raw: false
+      retain_raw: false,
+      open_timeout: DEFAULT_OPEN_TIMEOUT,
+      timeout: DEFAULT_READ_TIMEOUT,
+      write_timeout: DEFAULT_WRITE_TIMEOUT
     )
       @token            = Token.new(access_token: access_token, refresh_token: refresh_token, expires_at: expires_at)
       @client_id        = client_id
@@ -75,6 +82,7 @@ module XeroKiwi
       @adapter          = adapter
       @user_agent       = user_agent
       @retry_options    = DEFAULT_RETRY_OPTIONS.merge(retry_options)
+      @timeouts         = { open_timeout: open_timeout, timeout: timeout, write_timeout: write_timeout }
       @throttle         = throttle || XeroKiwi.default_throttle || Throttle::NullLimiter.new
       @page_size        = page_size
       @retain_raw       = retain_raw
@@ -882,8 +890,9 @@ module XeroKiwi
     # Middleware order matters. Outbound runs top-to-bottom; inbound runs in
     # reverse. We want:
     #
-    #   1. ResponseHandler (outermost) — converts the FINAL response status into
-    #      a XeroKiwi exception, *after* retries have been exhausted.
+    #   1. ResponseHandler (outermost) — converts the FINAL response status, or
+    #      the final transport failure, into a XeroKiwi exception, *after*
+    #      retries have been exhausted.
     #   2. Retry — retries on 429/503 (respecting Retry-After) and on transport
     #      exceptions.
     #   3. RateLimitCapture — records Xero's quota headers. Below Retry so
@@ -899,7 +908,7 @@ module XeroKiwi
     # gets retried by Faraday before we ever raise RateLimitError, and the
     # exception only fires once we've truly given up.
     def build_http
-      Faraday.new(url: BASE_URL) do |f|
+      Faraday.new(url: BASE_URL, request: @timeouts) do |f|
         f.use ResponseHandler
         f.request :retry, @retry_options
         f.use RateLimitCapture, @rate_limits
@@ -985,10 +994,17 @@ module XeroKiwi
       end
     end
 
-    # Faraday middleware that maps non-2xx responses onto our exception
-    # hierarchy. Lives outside the retry middleware so it only fires on the
-    # final response.
+    # Faraday middleware that maps non-2xx responses and transport failures
+    # onto our exception hierarchy. Lives outside the retry middleware so it
+    # only fires on the final response, and so the retry middleware still
+    # sees Faraday's own errors.
     class ResponseHandler < Faraday::Middleware
+      def call(env)
+        super
+      rescue Faraday::TimeoutError, Faraday::ConnectionFailed, Faraday::SSLError => e
+        raise ConnectionError, "Request to #{env.url.host} failed: #{e.message}"
+      end
+
       def on_complete(env)
         # 304 Not Modified is a valid response to a conditional GET
         # (If-Modified-Since). Let it through so the list helper can

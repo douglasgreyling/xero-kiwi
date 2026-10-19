@@ -413,6 +413,9 @@ you. See [Tokens](tokens.md) for the full refresh story.
 | `throttle:` | Limiter | No | `XeroKiwi.default_throttle`, else none | Proactive per-tenant rate limiting. See [Throttling](throttling.md). |
 | `page_size:` | `Integer` | No | `nil` (Xero's own default of 100) | Default `pageSize` for every list call. Per-call `page_size:` overrides it. See [Querying](querying.md). |
 | `retain_raw:` | `Boolean` | No | `false` | Keep Xero's untouched response hash on each resource, readable via `#raw`. See below. |
+| `open_timeout:` | `Numeric` | No | `5` | Seconds to wait for a connection to api.xero.com. See [Timeouts](#timeouts). |
+| `timeout:` | `Numeric` | No | `60` | Seconds to wait for each read of the response. Longer than the identity default, because a page of 1,000 invoices can be slow. |
+| `write_timeout:` | `Numeric` | No | `10` | Seconds to wait for each write of the request. |
 
 ### `retain_raw:` and `#raw`
 
@@ -740,6 +743,35 @@ client = XeroKiwi::Client.new(
 See [retries and rate limits](retries-and-rate-limits.md) for the full
 configuration reference and which keys you can override.
 
+## Timeouts
+
+A request that hits `open_timeout:`, `timeout:` or `write_timeout:` is
+retried like any other transport failure. Once the retries are exhausted, the
+client raises `XeroKiwi::ConnectionError`, with the last
+`Faraday::TimeoutError` or `Faraday::ConnectionFailed` as its `cause`. A
+failed TLS handshake is not retried: it raises `XeroKiwi::ConnectionError` at
+once, with `Faraday::SSLError` as its `cause`.
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  open_timeout: 2,
+  timeout:      30
+)
+```
+
+**Retries multiply the wait.** With the default `max: 4`, one hung request
+can wait for 5 reads of 60 seconds, plus the backoff between them: more than
+5 minutes. Where that matters, such as inside a web request, lower `timeout:`
+and `retry_options: { max: ... }` together.
+
+`timeout:` applies to each read from the socket, not to the whole request, so
+a response that keeps arriving slowly can take longer in total.
+
+**Refresh and revoke use the identity timeouts.** Those calls go to
+identity.xero.com, so the client's own values do not apply to them. See
+[Tokens](tokens.md#timeouts).
+
 ## Thread safety
 
 A single client can safely be shared across threads. The internals are
@@ -821,6 +853,9 @@ oauth = XeroKiwi::OAuth.new(
 | `client_secret:` | `String` | Yes | — | Your Xero app's client secret |
 | `redirect_uri:` | `String` | Conditional | `nil` | Required for `authorization_url` and `exchange_code`. **Optional** if you only use this instance for `revoke_token` or `verify_id_token`. |
 | `adapter:` | Faraday adapter | No | `Faraday.default_adapter` | The HTTP adapter for token-endpoint and JWKS calls |
+| `open_timeout:` | `Numeric` | No | `5` | Seconds to wait for a connection to identity.xero.com. See [Timeouts](#timeouts). |
+| `timeout:` | `Numeric` | No | `10` | Seconds to wait for each read of the response. |
+| `write_timeout:` | `Numeric` | No | `10` | Seconds to wait for each write of the request. |
 
 ### Why `redirect_uri:` is optional
 
@@ -838,6 +873,32 @@ If you're building a "revoke-only" instance for a logout flow, or a
 fake redirect URL. Pass `redirect_uri: nil` (or just omit it). If you then
 *do* call `authorization_url` or `exchange_code`, you'll get a clear
 `ArgumentError` at call time rather than a confusing 400 from Xero.
+
+### Timeouts
+
+Every call the instance makes — `exchange_code`, `client_credentials_token`,
+`revoke_token` and the JWKS fetch behind `verify_id_token` — gives up after
+these limits and raises `XeroKiwi::ConnectionError`. Faraday's
+`Faraday::TimeoutError` or `Faraday::ConnectionFailed` is its `cause`.
+
+Without them, each call would use Net::HTTP's defaults of 60 seconds to
+connect, 60 to read and 60 to write. The code exchange and the ID token check
+usually run inside a web request, so a slow identity.xero.com would hold that
+request, and its server thread, for a minute or more.
+
+```ruby
+oauth = XeroKiwi::OAuth.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  redirect_uri:  "https://app.example.com/xero/callback",
+  open_timeout:  2,
+  timeout:       5
+)
+```
+
+Identity calls are not retried, so the limits are close to the whole wait.
+`timeout:` applies to each read from the socket, so a response that keeps
+arriving slowly can take longer in total.
 
 ## Step 1: building the authorisation URL
 
@@ -1044,7 +1105,7 @@ id_token, and scope. See [Tokens](tokens.md) for the full reference.
 | Wrong `redirect_uri` (must match the one used at authorise time) | `XeroKiwi::OAuth::CodeExchangeError` |
 | PKCE verifier mismatch | `XeroKiwi::OAuth::CodeExchangeError` |
 | Wrong client credentials | `XeroKiwi::OAuth::CodeExchangeError` |
-| Network error | bubbles up as a `Faraday::ConnectionFailed` |
+| Timeout, or no connection to Xero | `XeroKiwi::ConnectionError`, with Faraday's error as its `cause` |
 
 `XeroKiwi::OAuth::CodeExchangeError` inherits from `XeroKiwi::AuthenticationError`,
 so you can catch the broader class if you don't care about the distinction.
@@ -1092,6 +1153,15 @@ verified = XeroKiwi::OAuth::IDToken.verify(
 The standalone class method **fetches JWKS fresh on every call** via
 `Net::HTTP`. Fine for one-off use, wasteful in a hot loop. If you find
 yourself calling it repeatedly, switch to the OAuth instance method.
+
+It takes the same `open_timeout:`, `timeout:` and `write_timeout:` options
+as `OAuth.new`, with the same defaults. Unlike the instance method, it raises
+`XeroKiwi::OAuth::IDTokenError` when the fetch times out, as it does for any
+other failure to fetch the JWKS.
+
+```ruby
+XeroKiwi::OAuth::IDToken.verify(id_token, client_id: "...", timeout: 5)
+```
 
 You can also inject your own JWKS provider:
 
@@ -1224,6 +1294,7 @@ auto-refresh paths stay out of the way.
 |-------|-----------|
 | Wrong `client_id` / `client_secret` | `XeroKiwi::OAuth::ClientCredentialsError` |
 | Scope the app isn't authorised for | `XeroKiwi::OAuth::ClientCredentialsError` |
+| Timeout, or no connection to Xero | `XeroKiwi::ConnectionError`, with Faraday's error as its `cause` |
 
 `ClientCredentialsError` subclasses `XeroKiwi::AuthenticationError`, so an
 existing `rescue XeroKiwi::AuthenticationError` still catches it. There is
@@ -1538,6 +1609,34 @@ else
 end
 ```
 
+### Timeouts
+
+A refresh goes to identity.xero.com, not api.xero.com, so it uses the
+identity timeouts: 5 seconds to connect, 10 to read and 10 to write. The
+client's own `timeout:` does not apply to it. When identity.xero.com does not
+answer in time, the refresh raises `XeroKiwi::ConnectionError` rather than
+holding the thread for Net::HTTP's default of 60 seconds.
+
+`XeroKiwi::TokenRefresher` takes the same options as `XeroKiwi::OAuth.new`
+if you use it directly:
+
+```ruby
+refresher = XeroKiwi::TokenRefresher.new(
+  client_id:     ENV.fetch("XERO_CLIENT_ID"),
+  client_secret: ENV.fetch("XERO_CLIENT_SECRET"),
+  open_timeout:  2,
+  timeout:       5
+)
+
+refresher.refresh(refresh_token: stored_refresh_token)
+```
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `open_timeout:` | `5` | Seconds to wait for a connection. |
+| `timeout:` | `10` | Seconds to wait for each read of the response. |
+| `write_timeout:` | `10` | Seconds to wait for each write of the request. |
+
 ## The `on_token_refresh` callback
 
 This is the most important integration point in the gem. Every time the
@@ -1668,7 +1767,9 @@ This:
    current refresh token.
 2. Returns `true` on success.
 3. Raises `XeroKiwi::TokenRefreshError` if the client has no refresh capability,
-   or `XeroKiwi::AuthenticationError` if Xero rejects the revoke.
+   `XeroKiwi::AuthenticationError` if Xero rejects the revoke, or
+   `XeroKiwi::ConnectionError` if identity.xero.com does not answer within the
+   [identity timeouts](#timeouts).
 
 After revocation, **treat the client as dead.** Subsequent API calls will
 401, and reactive refresh will fail because the refresh token is gone too.
@@ -3909,6 +4010,7 @@ StandardError
    │  ├─ XeroKiwi::ClientError           (other 4xx)
    │  ├─ XeroKiwi::ServerError           (5xx)
    │  └─ XeroKiwi::RateLimitError        (429, with retry_after + problem)
+   ├─ XeroKiwi::ConnectionError          (timeout or failed connection)
    ├─ XeroKiwi::OAuth::StateMismatchError  (CSRF check failed)
    └─ XeroKiwi::OAuth::IDTokenError        (ID token JWT verification failed)
 ```
@@ -3916,12 +4018,16 @@ StandardError
 A few things worth noticing about the shape:
 
 - **Everything Xero Kiwi raises** descends from `XeroKiwi::Error`. If you only want
-  one rescue clause for "the Xero integration broke," catch this.
+  one rescue clause for "the Xero integration broke," catch this. The one
+  exception is a response that says it is JSON but does not parse, which
+  raises Faraday's own `Faraday::ParsingError`.
 - **HTTP responses** descend from `XeroKiwi::APIError`, which carries `status`
   and `body` attributes you can inspect.
 - **OAuth-specific errors** for state mismatch and ID token verification
   descend from `XeroKiwi::Error` directly (not `APIError`) because they don't
   come from an HTTP response — they're local validation failures.
+- **`XeroKiwi::ConnectionError`** descends from `XeroKiwi::Error` directly
+  too. No response arrived, so there is no status or body to carry.
 - **`XeroKiwi::TokenRefreshError`** and **`XeroKiwi::OAuth::CodeExchangeError`** are
   both `AuthenticationError` subclasses, because the practical recovery is
   the same as for any 401: the user needs to re-authorise.
@@ -4029,6 +4135,30 @@ Extra attributes beyond `APIError`:
 Sidekiq job can re-enqueue itself with that delay rather than hammering
 Xero.
 
+### `XeroKiwi::ConnectionError`
+
+Raised when a request hits its `open_timeout:`, `timeout:` or
+`write_timeout:`, or when the connection fails (refused, reset, the host
+does not resolve, or the TLS handshake fails). `XeroKiwi::Client` raises it
+only after its retries are exhausted, except for a TLS failure, which it
+does not retry. Identity calls (code exchange, client credentials, refresh,
+revoke and the JWKS fetch) are not retried.
+
+The original `Faraday::TimeoutError`, `Faraday::ConnectionFailed` or
+`Faraday::SSLError` is the error's `cause`:
+
+```ruby
+rescue XeroKiwi::ConnectionError => e
+  e.cause # => #<Faraday::TimeoutError: Net::ReadTimeout ...>
+```
+
+`XeroKiwi::OAuth::IDToken.verify` without `jwks:` is the one exception: it
+raises `XeroKiwi::OAuth::IDTokenError` for any failure to fetch the JWKS,
+timeouts included.
+
+See [Client — Timeouts](client.md#timeouts) and [OAuth — Timeouts](oauth.md#timeouts)
+for the limits and their defaults.
+
 ### `XeroKiwi::OAuth::StateMismatchError`
 
 Raised by `XeroKiwi::OAuth.verify_state!` when the `state` parameter Xero
@@ -4049,7 +4179,9 @@ the ID token JWT can't be verified. Causes:
 - Wrong audience.
 - Token expired.
 - Nonce mismatch (when nonce verification was requested).
-- Network failure fetching JWKS.
+- Network failure fetching JWKS, through `IDToken.verify` without `jwks:`.
+  Through `oauth.verify_id_token`, a network failure raises
+  `XeroKiwi::ConnectionError` instead.
 
 The error message has a brief description of which check failed (e.g.
 `"ID token verification failed: Signature verification failed"`,
@@ -4116,10 +4248,12 @@ rescue XeroKiwi::OAuth::CodeExchangeError
   redirect_to root_path, alert: "Could not complete Xero authorisation"
 rescue XeroKiwi::OAuth::IDTokenError
   redirect_to root_path, alert: "Could not verify Xero identity"
+rescue XeroKiwi::ConnectionError
+  redirect_to root_path, alert: "Xero did not respond. Please try again."
 end
 ```
 
-Three separate rescue clauses give you three different user-facing
+Four separate rescue clauses give you four different user-facing
 messages, which is usually what you want for an OAuth callback — different
 failures imply different user actions.
 
@@ -4345,10 +4479,12 @@ code, catch `XeroKiwi::ServerError` and handle it explicitly.
 |----------|-----------------|
 | All retries returned 429 | `XeroKiwi::RateLimitError` (with `retry_after` and `problem` attributes) |
 | All retries returned 502/503/504 | `XeroKiwi::ServerError` |
-| All retries failed at the transport level | The underlying `Faraday::ConnectionFailed` / `Faraday::TimeoutError` |
+| All retries failed at the transport level | `XeroKiwi::ConnectionError`, with the last `Faraday::ConnectionFailed` / `Faraday::TimeoutError` as its `cause` |
 
 The retried request count includes the original attempt, so `max: 4` means
-**up to 5 total HTTP requests** before giving up.
+**up to 5 total HTTP requests** before giving up. Each of them can wait the
+full read timeout, so a hung endpoint takes up to 5 times as long to fail.
+See [Client — Timeouts](client.md#timeouts).
 
 ## Customising the retry policy
 

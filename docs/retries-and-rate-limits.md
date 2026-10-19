@@ -175,10 +175,12 @@ code, catch `XeroKiwi::ServerError` and handle it explicitly.
 |----------|-----------------|
 | All retries returned 429 | `XeroKiwi::RateLimitError` (with `retry_after` and `problem` attributes) |
 | All retries returned 502/503/504 | `XeroKiwi::ServerError` |
-| All retries failed at the transport level | The underlying `Faraday::ConnectionFailed` / `Faraday::TimeoutError` |
+| All retries failed at the transport level | `XeroKiwi::ConnectionError`, with the last `Faraday::ConnectionFailed` / `Faraday::TimeoutError` as its `cause` |
 
 The retried request count includes the original attempt, so `max: 4` means
-**up to 5 total HTTP requests** before giving up.
+**up to 5 total HTTP requests** before giving up. Each of them can wait the
+full read timeout, so a hung endpoint takes up to 5 times as long to fail.
+See [Client — Timeouts](client.md#timeouts).
 
 ## Customising the retry policy
 

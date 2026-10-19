@@ -82,4 +82,24 @@ RSpec.describe XeroKiwi::TokenRefresher do
       expect { refresher.refresh(refresh_token: "") }.to  raise_error(ArgumentError)
     end
   end
+
+  context "when identity.xero.com hangs" do
+    include_context "with a hanging endpoint"
+
+    before { stub_const("XeroKiwi::Identity::URL", hanging_url) }
+
+    it "gives up on a hung refresh after the read timeout" do
+      refresher = described_class.new(client_id: client_id, client_secret: client_secret, timeout: HangingEndpoint::TIMEOUT)
+
+      expect { refresher.refresh(refresh_token: "rt") }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "uses the identity default when no timeout is given" do
+      stub_const("XeroKiwi::Identity::DEFAULT_READ_TIMEOUT", HangingEndpoint::TIMEOUT)
+
+      expect { refresher.refresh(refresh_token: "rt") }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+  end
 end

@@ -44,6 +44,9 @@ you. See [Tokens](tokens.md) for the full refresh story.
 | `throttle:` | Limiter | No | `XeroKiwi.default_throttle`, else none | Proactive per-tenant rate limiting. See [Throttling](throttling.md). |
 | `page_size:` | `Integer` | No | `nil` (Xero's own default of 100) | Default `pageSize` for every list call. Per-call `page_size:` overrides it. See [Querying](querying.md). |
 | `retain_raw:` | `Boolean` | No | `false` | Keep Xero's untouched response hash on each resource, readable via `#raw`. See below. |
+| `open_timeout:` | `Numeric` | No | `5` | Seconds to wait for a connection to api.xero.com. See [Timeouts](#timeouts). |
+| `timeout:` | `Numeric` | No | `60` | Seconds to wait for each read of the response. Longer than the identity default, because a page of 1,000 invoices can be slow. |
+| `write_timeout:` | `Numeric` | No | `10` | Seconds to wait for each write of the request. |
 
 ### `retain_raw:` and `#raw`
 
@@ -370,6 +373,35 @@ client = XeroKiwi::Client.new(
 
 See [retries and rate limits](retries-and-rate-limits.md) for the full
 configuration reference and which keys you can override.
+
+## Timeouts
+
+A request that hits `open_timeout:`, `timeout:` or `write_timeout:` is
+retried like any other transport failure. Once the retries are exhausted, the
+client raises `XeroKiwi::ConnectionError`, with the last
+`Faraday::TimeoutError` or `Faraday::ConnectionFailed` as its `cause`. A
+failed TLS handshake is not retried: it raises `XeroKiwi::ConnectionError` at
+once, with `Faraday::SSLError` as its `cause`.
+
+```ruby
+client = XeroKiwi::Client.new(
+  access_token: "...",
+  open_timeout: 2,
+  timeout:      30
+)
+```
+
+**Retries multiply the wait.** With the default `max: 4`, one hung request
+can wait for 5 reads of 60 seconds, plus the backoff between them: more than
+5 minutes. Where that matters, such as inside a web request, lower `timeout:`
+and `retry_options: { max: ... }` together.
+
+`timeout:` applies to each read from the socket, not to the whole request, so
+a response that keeps arriving slowly can take longer in total.
+
+**Refresh and revoke use the identity timeouts.** Those calls go to
+identity.xero.com, so the client's own values do not apply to them. See
+[Tokens](tokens.md#timeouts).
 
 ## Thread safety
 

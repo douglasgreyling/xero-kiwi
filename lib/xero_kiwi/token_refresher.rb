@@ -13,10 +13,18 @@ module XeroKiwi
   #
   # See: https://developer.xero.com/documentation/guides/oauth2/auth-flow#refreshing-access-and-refresh-tokens
   class TokenRefresher
-    def initialize(client_id:, client_secret:, adapter: nil)
+    def initialize(
+      client_id:,
+      client_secret:,
+      adapter: nil,
+      open_timeout: Identity::DEFAULT_OPEN_TIMEOUT,
+      timeout: Identity::DEFAULT_READ_TIMEOUT,
+      write_timeout: Identity::DEFAULT_WRITE_TIMEOUT
+    )
       @client_id     = client_id
       @client_secret = client_secret
       @adapter       = adapter
+      @timeouts      = { open_timeout: open_timeout, timeout: timeout, write_timeout: write_timeout }
     end
 
     # Performs the refresh round-trip and returns a fresh XeroKiwi::Token. Raises
@@ -47,7 +55,7 @@ module XeroKiwi
     end
 
     def http
-      @_http ||= Identity.build_http(adapter: @adapter)
+      @_http ||= Identity.build_http(adapter: @adapter, **@timeouts)
     end
   end
 end

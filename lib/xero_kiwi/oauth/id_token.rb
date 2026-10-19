@@ -34,20 +34,29 @@ module XeroKiwi
 
       attr_reader :claims
 
-      def self.verify(id_token, client_id:, nonce: nil, jwks: nil)
+      def self.verify(
+        id_token,
+        client_id:,
+        nonce: nil,
+        jwks: nil,
+        open_timeout: Identity::DEFAULT_OPEN_TIMEOUT,
+        timeout: Identity::DEFAULT_READ_TIMEOUT,
+        write_timeout: Identity::DEFAULT_WRITE_TIMEOUT
+      )
         raise ArgumentError, "id_token is required"  if id_token.nil?  || id_token.empty?
         raise ArgumentError, "client_id is required" if client_id.nil? || client_id.empty?
 
-        decoded = decode(id_token, client_id, jwks)
-        claims  = decoded.first
+        timeouts = { open_timeout: open_timeout, timeout: timeout, write_timeout: write_timeout }
+        decoded  = decode(id_token, client_id: client_id, jwks: jwks, timeouts: timeouts)
+        claims   = decoded.first
         verify_nonce!(claims, nonce) if nonce
         new(claims)
       rescue JWT::DecodeError => e
         raise IDTokenError, "ID token verification failed: #{e.message}"
       end
 
-      def self.decode(id_token, client_id, jwks)
-        jwks_proc = jwks || method(:fetch_jwks_directly)
+      def self.decode(id_token, client_id:, jwks:, timeouts:)
+        jwks_proc = jwks || -> { fetch_jwks_directly(**timeouts) }
         JWT.decode(
           id_token,
           nil,
@@ -66,8 +75,18 @@ module XeroKiwi
       # injected. Net::HTTP keeps this dependency-free at the call site;
       # OAuth#verify_id_token uses an instance-cached Faraday fetcher
       # instead.
-      def self.fetch_jwks_directly
-        body = Net::HTTP.get(URI(Identity::JWKS_URL))
+      def self.fetch_jwks_directly(open_timeout:, timeout:, write_timeout:)
+        uri     = URI(Identity::JWKS_URL)
+        options = {
+          use_ssl:       uri.scheme == "https",
+          open_timeout:  open_timeout,
+          read_timeout:  timeout,
+          write_timeout: write_timeout,
+          # Net::HTTP retries a timed-out GET once, which doubles the wait.
+          max_retries:   0
+        }
+
+        body = Net::HTTP.start(uri.host, uri.port, **options) { |http| http.get(uri.request_uri).body }
         JSON.parse(body).fetch("keys")
       rescue StandardError => e
         raise IDTokenError, "failed to fetch JWKS: #{e.message}"

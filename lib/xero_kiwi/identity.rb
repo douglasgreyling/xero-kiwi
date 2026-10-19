@@ -17,15 +17,26 @@ module XeroKiwi
     JWKS_PATH        = "/.well-known/openid-configuration/jwks"
     JWKS_URL         = "#{URL}#{JWKS_PATH}".freeze
 
+    DEFAULT_OPEN_TIMEOUT  = 5
+    DEFAULT_READ_TIMEOUT  = 10
+    DEFAULT_WRITE_TIMEOUT = 10
+
     module_function
 
     # Builds a Faraday connection configured for the Xero identity host:
-    # JSON response parsing and our exception mapping. No retry middleware
-    # — token endpoints aren't subject to the same rate limits as the API,
-    # and retrying a failed token call usually masks a real configuration
-    # problem instead of fixing a transient one.
-    def build_http(adapter: nil)
-      Faraday.new(url: URL) do |f|
+    # timeouts, JSON response parsing and our exception mapping. No retry
+    # middleware — token endpoints aren't subject to the same rate limits as
+    # the API, and retrying a failed token call usually masks a real
+    # configuration problem instead of fixing a transient one.
+    def build_http(
+      adapter: nil,
+      open_timeout: DEFAULT_OPEN_TIMEOUT,
+      timeout: DEFAULT_READ_TIMEOUT,
+      write_timeout: DEFAULT_WRITE_TIMEOUT
+    )
+      request = { open_timeout: open_timeout, timeout: timeout, write_timeout: write_timeout }
+
+      Faraday.new(url: URL, request: request) do |f|
         f.use Client::ResponseHandler
         f.response :json, content_type: /\bjson/
         f.adapter(adapter || Faraday.default_adapter)

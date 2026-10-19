@@ -2245,6 +2245,71 @@ RSpec.describe XeroKiwi::Client do
     end
   end
 
+  context "when api.xero.com hangs" do
+    include_context "with a hanging endpoint"
+
+    let(:no_retries) { { max: 0 } }
+
+    before { stub_const("XeroKiwi::Client::BASE_URL", hanging_url) }
+
+    it "gives up on a hung request after the read timeout" do
+      client = described_class.new(access_token: access_token, retry_options: no_retries, timeout: HangingEndpoint::TIMEOUT)
+
+      expect { client.connections }.to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "uses the API default when no timeout is given" do
+      stub_const("XeroKiwi::Client::DEFAULT_READ_TIMEOUT", HangingEndpoint::TIMEOUT)
+      client = described_class.new(access_token: access_token, retry_options: no_retries)
+
+      expect { client.connections }.to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "waits out the read timeout again on each retry" do
+      client = described_class.new(
+        access_token:  access_token,
+        retry_options: { max: 1, interval: 0, interval_randomness: 0 },
+        timeout:       HangingEndpoint::TIMEOUT
+      )
+
+      expect { client.connections }.to time_out_with(XeroKiwi::ConnectionError).after(2 * HangingEndpoint::TIMEOUT)
+    end
+  end
+
+  context "when no timeouts are given" do
+    it "waits 5 seconds to connect, 60 to read and 10 to write", :aggregate_failures do
+      expect(described_class::DEFAULT_OPEN_TIMEOUT).to eq(5)
+      expect(described_class::DEFAULT_READ_TIMEOUT).to eq(60)
+      expect(described_class::DEFAULT_WRITE_TIMEOUT).to eq(10)
+    end
+  end
+
+  context "when the connection fails" do
+    it "retries a refused connection before giving up" do
+      stub = stub_request(:get, connections_endpoint)
+             .to_raise(Errno::ECONNREFUSED).then
+             .to_return(status: 200, body: "[]", headers: json_headers)
+
+      client.connections
+
+      expect(stub).to have_been_requested.twice
+    end
+
+    it "raises ConnectionError, keeping Faraday's error as the cause" do
+      stub_request(:get, connections_endpoint).to_raise(Errno::ECONNREFUSED)
+
+      expect { client.connections }
+        .to raise_error(XeroKiwi::ConnectionError) { |error| expect(error.cause).to be_a(Faraday::ConnectionFailed) }
+    end
+
+    it "raises ConnectionError when the TLS handshake fails, keeping Faraday's error as the cause" do
+      stub_request(:get, connections_endpoint).to_raise(OpenSSL::SSL::SSLError)
+
+      expect { client.connections }
+        .to raise_error(XeroKiwi::ConnectionError) { |error| expect(error.cause).to be_a(Faraday::SSLError) }
+    end
+  end
+
   describe "token refresh" do
     let(:refresh_endpoint) { "https://identity.xero.com/connect/token" }
     let(:client_id)        { "client_xyz" }

@@ -366,4 +366,57 @@ RSpec.describe XeroKiwi::OAuth do
         .to raise_error(XeroKiwi::OAuth::IDTokenError)
     end
   end
+
+  context "when identity.xero.com hangs" do
+    include_context "with a hanging endpoint"
+
+    let(:oauth) do
+      described_class.new(
+        client_id:     client_id,
+        client_secret: client_secret,
+        redirect_uri:  redirect_uri,
+        timeout:       HangingEndpoint::TIMEOUT
+      )
+    end
+
+    before { stub_const("XeroKiwi::Identity::URL", hanging_url) }
+
+    it "gives up on a hung code exchange after the read timeout" do
+      expect { oauth.exchange_code(code: "abc") }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "gives up on a hung client-credentials grant after the read timeout" do
+      expect { oauth.client_credentials_token(scopes: "app.connections") }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "gives up on a hung revocation after the read timeout" do
+      expect { oauth.revoke_token(refresh_token: "rt") }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "gives up on a hung JWKS fetch after the read timeout" do
+      expect { oauth.verify_id_token(TestJWT.build_id_token(aud: client_id)) }
+        .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+    end
+
+    it "keeps the timeout as the cause" do
+      expect { oauth.exchange_code(code: "abc") }
+        .to raise_error(XeroKiwi::ConnectionError) { |error| expect(error.cause).to be_a(Faraday::TimeoutError) }
+    end
+
+    context "when no timeout is given" do
+      let(:oauth) do
+        described_class.new(client_id: client_id, client_secret: client_secret, redirect_uri: redirect_uri)
+      end
+
+      before { stub_const("XeroKiwi::Identity::DEFAULT_READ_TIMEOUT", HangingEndpoint::TIMEOUT) }
+
+      it "uses the identity default" do
+        expect { oauth.exchange_code(code: "abc") }
+          .to time_out_with(XeroKiwi::ConnectionError).after(HangingEndpoint::TIMEOUT)
+      end
+    end
+  end
 end

@@ -101,5 +101,34 @@ RSpec.describe XeroKiwi::OAuth::IDToken do
         expect { described_class.verify("token", client_id: "") }.to  raise_error(ArgumentError)
       end
     end
+
+    context "when no JWKS is given" do
+      let(:token) { TestJWT.build_id_token(aud: client_id) }
+
+      it "fetches Xero's JWKS itself" do
+        stub_request(:get, XeroKiwi::Identity::JWKS_URL)
+          .to_return(status: 200, body: TestJWT::JWKS_BODY, headers: { "Content-Type" => "application/json" })
+
+        expect(described_class.verify(token, client_id: client_id).subject).to eq("user_sub_123")
+      end
+
+      context "when the JWKS endpoint hangs" do
+        include_context "with a hanging endpoint"
+
+        before { stub_const("XeroKiwi::Identity::JWKS_URL", "#{hanging_url}#{XeroKiwi::Identity::JWKS_PATH}") }
+
+        it "gives up after the read timeout" do
+          expect { described_class.verify(token, client_id: client_id, timeout: HangingEndpoint::TIMEOUT) }
+            .to time_out_with(XeroKiwi::OAuth::IDTokenError).after(HangingEndpoint::TIMEOUT)
+        end
+
+        it "uses the identity default when no timeout is given" do
+          stub_const("XeroKiwi::Identity::DEFAULT_READ_TIMEOUT", HangingEndpoint::TIMEOUT)
+
+          expect { described_class.verify(token, client_id: client_id) }
+            .to time_out_with(XeroKiwi::OAuth::IDTokenError).after(HangingEndpoint::TIMEOUT)
+        end
+      end
+    end
   end
 end

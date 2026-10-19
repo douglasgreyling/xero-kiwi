@@ -16,6 +16,7 @@ module XeroKiwi
   class AuthenticationError < APIError; end
   class ClientError < APIError; end
   class ServerError < APIError; end
+  class ConnectionError < Error; end
 
   # Raised when refreshing the OAuth2 token fails — typically because the
   # refresh token has expired (60 days) or has already been rotated. Callers

@@ -101,11 +101,20 @@ module XeroKiwi
     # (`authorization_url` and `exchange_code`) but not for `revoke_token`
     # or `verify_id_token`. It's optional at construction time so callers
     # who only need the latter operations don't have to invent a fake URL.
-    def initialize(client_id:, client_secret:, redirect_uri: nil, adapter: nil)
+    def initialize(
+      client_id:,
+      client_secret:,
+      redirect_uri: nil,
+      adapter: nil,
+      open_timeout: Identity::DEFAULT_OPEN_TIMEOUT,
+      timeout: Identity::DEFAULT_READ_TIMEOUT,
+      write_timeout: Identity::DEFAULT_WRITE_TIMEOUT
+    )
       @client_id       = client_id
       @client_secret   = client_secret
       @redirect_uri    = redirect_uri
       @adapter         = adapter
+      @timeouts        = { open_timeout: open_timeout, timeout: timeout, write_timeout: write_timeout }
       @jwks_mutex      = Mutex.new
       @jwks_cache      = nil
       @jwks_fetched_at = nil
@@ -281,7 +290,7 @@ module XeroKiwi
     end
 
     def http
-      @_http ||= Identity.build_http(adapter: @adapter)
+      @_http ||= Identity.build_http(adapter: @adapter, **@timeouts)
     end
   end
 end
